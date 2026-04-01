@@ -175,3 +175,42 @@ function Format-Line {
 
     return ($Line.fields | ForEach-Object { Format-Field $_ $Data }) -join ''
 }
+
+<#
+.SYNOPSIS
+    Entry point. Reads config file and input JSON, renders all lines to stdout.
+.PARAMETER ConfigPath
+    Full path to statusline-config.json. Defaults to the script's own directory.
+.PARAMETER InputJson
+    JSON string with Claude Code session data. Defaults to reading from stdin.
+.OUTPUTS
+    One rendered status line per configured line, written to stdout.
+#>
+function Invoke-Main {
+    param(
+        [string]$ConfigPath   = (Join-Path $PSScriptRoot 'statusline-config.json'),
+        [string]$InputJson    = $null
+    )
+
+    # Read config
+    if (-not (Test-Path $ConfigPath)) { return '' }
+    $configJson = try { Get-Content -Path $ConfigPath -Raw -Encoding UTF8 } catch { return '' }
+    $config     = try { $configJson | ConvertFrom-Json } catch { return '' }
+
+    # Read input JSON (from parameter or stdin)
+    if (-not $InputJson) {
+        $InputJson = try { [Console]::In.ReadToEnd() } catch { '{}' }
+    }
+    $data = try { $InputJson | ConvertFrom-Json } catch { return '' }
+
+    # Render each line
+    $output = $config.lines | ForEach-Object { Format-Line $_ $data } | Where-Object { $_ -ne '' }
+    return $output -join "`n"
+}
+
+# ─── Script entry point ───────────────────────────────────────────────────
+# Only run when invoked directly (not when dot-sourced by tests)
+if ($MyInvocation.InvocationName -ne '.') {
+    $result = Invoke-Main
+    if ($result) { Write-Output $result }
+}

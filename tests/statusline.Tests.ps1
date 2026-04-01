@@ -152,3 +152,54 @@ Describe 'Format-Line' {
         Format-Line $line $sampleData | Should -BeNullOrEmpty
     }
 }
+
+Describe 'Invoke-Main' {
+    BeforeAll {
+        $configPath = Join-Path $TestDrive 'statusline-config.json'
+        $config = @{
+            lines = @(
+                @{
+                    fields = @(
+                        @{ type='field'; key='model.display_name'; fg=$null; bg=$null }
+                        @{ type='static'; text=' | '; fg=$null; bg=$null }
+                    )
+                }
+            )
+        } | ConvertTo-Json -Depth 10
+        Set-Content -Path $configPath -Value $config -Encoding UTF8
+    }
+
+    It 'renders a line from config and input data' {
+        $inputJson = '{"model":{"display_name":"Sonnet"}}'
+        $result = Invoke-Main -ConfigPath $configPath -InputJson $inputJson
+        $result | Should -Match 'Sonnet'
+    }
+
+    It 'returns empty string when config file does not exist' {
+        $result = Invoke-Main -ConfigPath 'C:\nonexistent\config.json' -InputJson '{}'
+        $result | Should -BeNullOrEmpty
+    }
+
+    It 'returns empty string when input JSON is malformed' {
+        $result = Invoke-Main -ConfigPath $configPath -InputJson 'not json'
+        $result | Should -BeNullOrEmpty
+    }
+
+    It 'returns empty string when config JSON is malformed' {
+        $badConfig = Join-Path $TestDrive 'bad-config.json'
+        Set-Content -Path $badConfig -Value 'not json' -Encoding UTF8
+        $result = Invoke-Main -ConfigPath $badConfig -InputJson '{}'
+        $result | Should -BeNullOrEmpty
+    }
+
+    It 'outputs empty field as empty string without crashing' {
+        $configNoKey = @{
+            lines = @(
+                @{ fields = @(@{ type='field'; key='nonexistent.key'; fg=$null; bg=$null }) }
+            )
+        } | ConvertTo-Json -Depth 10
+        $path = Join-Path $TestDrive 'config-nokey.json'
+        Set-Content -Path $path -Value $configNoKey -Encoding UTF8
+        { Invoke-Main -ConfigPath $path -InputJson '{"model":{}}' } | Should -Not -Throw
+    }
+}
