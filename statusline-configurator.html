@@ -656,6 +656,73 @@ function applyPopup() {
   closePopup();
   render();
 }
+
+// ─── Progress bar rendering ───────────────────────────────────────────────
+
+// Color thresholds (global, matches PowerShell script)
+const PB_COLORS = { low: '#4ade80', mid: '#facc15', high: '#f87171' };
+
+/**
+ * Returns { bar: string, color: string } for a progress bar.
+ * @param {number} value   - 0 to 100
+ * @param {string} style   - 'block' | 'slim' | 'color-coded'
+ * @param {string|null} fg - override color (#rrggbb) or null
+ */
+function makeProgressBar(value, style, fg) {
+  const pct = Math.min(100, Math.max(0, value || 0));
+  const filled = Math.round(pct / 10);   // 10 segments
+  const empty  = 10 - filled;
+
+  const color = fg || (pct < 50 ? PB_COLORS.low : pct < 80 ? PB_COLORS.mid : PB_COLORS.high);
+
+  let bar;
+  if (style === 'slim') {
+    bar = '█'.repeat(filled) + '░'.repeat(empty) + ' ' + Math.round(pct) + '%';
+  } else {
+    // 'block' and 'color-coded' use the same bracket format
+    bar = '[' + '▓'.repeat(filled) + '░'.repeat(empty) + '] ' + Math.round(pct) + '%';
+  }
+
+  return { bar, color };
+}
+
+/**
+ * Formats a field's value for display in the preview (returns HTML string with inline styles).
+ * @param {object} field - field config object from state
+ * @param {object} data  - sample data object
+ */
+function renderFieldHtml(field, data) {
+  const fg = field.fg;
+  const bg = field.bg;
+  const style = [fg ? `color:${fg};` : '', bg ? `background:${bg};padding:1px 3px;border-radius:3px;` : ''].join('');
+
+  if (field.type === 'static') {
+    return `<span style="${style}">${escapeHtml(field.text || '')}</span>`;
+  }
+
+  const raw = getNestedValue(data, field.key);
+  if (raw === undefined || raw === null || raw === '') {
+    return '';
+  }
+
+  if (field.type === 'progressbar') {
+    const { bar, color } = makeProgressBar(raw, field.progressStyle || 'color-coded', fg);
+    const finalStyle = [fg ? `color:${fg};` : `color:${color};`, bg ? `background:${bg};padding:1px 3px;border-radius:3px;` : ''].join('');
+    return `<span style="${finalStyle}">${bar}</span>`;
+  }
+
+  // type === 'field'
+  return `<span style="${style}">${escapeHtml(String(raw))}</span>`;
+}
+
+function getNestedValue(obj, path) {
+  if (!path || !obj) return undefined;
+  return path.split('.').reduce((cur, key) => (cur != null ? cur[key] : undefined), obj);
+}
+
+function escapeHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
   </script>
 </body>
 </html>
