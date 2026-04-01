@@ -318,6 +318,7 @@ function renderFieldsPanel() {
     header.innerHTML = `<span class="group-arrow" style="display:inline-block;transition:transform 0.15s;">▶</span> ${group.group}`;
 
     const itemList = document.createElement('div');
+    itemList.className = 'field-group-list';
     itemList.style.cssText = 'display:none;';
 
     header.addEventListener('click', () => {
@@ -469,24 +470,30 @@ function fieldLabel(field) {
 // ─── Drag & Drop (Sortable.js) ────────────────────────────────────────────
 
 function initSortable() {
-  const fieldsTree = document.getElementById('fields-tree');
-  if (fieldsTree._sortable) fieldsTree._sortable.destroy();
-  fieldsTree._sortable = Sortable.create(fieldsTree, {
-    group: { name: 'fields', pull: 'clone', put: false },
-    sort: false,
-    animation: 100,
-    ghostClass: 'sortable-ghost',
-    draggable: '.field-source',
-    onStart() {
-      document.querySelectorAll('.line-drop-zone').forEach(z => {
-        z.style.borderColor = 'var(--color-accent)';
-      });
-    },
-    onEnd() {
-      document.querySelectorAll('.line-drop-zone').forEach(z => {
-        z.style.borderColor = '';
-      });
-    },
+  // Destroy old per-group Sortable instances
+  document.querySelectorAll('.field-group-list').forEach(list => {
+    if (list._sortable) { list._sortable.destroy(); list._sortable = null; }
+  });
+
+  // Create one Sortable per group list — field-source items are direct children there
+  document.querySelectorAll('.field-group-list').forEach(list => {
+    list._sortable = Sortable.create(list, {
+      group: { name: 'fields', pull: 'clone', put: false },
+      sort: false,
+      animation: 100,
+      ghostClass: 'sortable-ghost',
+      draggable: '.field-source',
+      onStart() {
+        document.querySelectorAll('.line-drop-zone').forEach(z => {
+          z.style.borderColor = 'var(--color-accent)';
+        });
+      },
+      onEnd() {
+        document.querySelectorAll('.line-drop-zone').forEach(z => {
+          z.style.borderColor = '';
+        });
+      },
+    });
   });
 
   document.querySelectorAll('.line-drop-zone').forEach(zone => {
@@ -498,11 +505,13 @@ function initSortable() {
       ghostClass: 'sortable-ghost',
       draggable: '.field-chip',
       onAdd(evt) {
+        // Capture fieldKey before removing the item from DOM
+        const panelFieldKey = evt.item?.dataset?.fieldKey;
         evt.item.remove();
         let newField;
-        if (evt.clone?.dataset?.fieldKey) {
+        if (panelFieldKey) {
           // Left-panel clone → create a new field object
-          const fieldKey = evt.clone.dataset.fieldKey;
+          const fieldKey = panelFieldKey;
           const isPercentage = PERCENTAGE_KEYS.has(fieldKey);
           newField = isPercentage
             ? { id: generateId(), type: 'progressbar', key: fieldKey, progressStyle: 'color-coded', fg: null, bg: null }
