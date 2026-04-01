@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Claude Code Statusline Configurator</title>
+  <style>
+    :root {
+      --color-bg: #161616;
+      --color-surface: #1f1f1f;
+      --color-surface-2: #2a2a2a;
+      --color-border: #333;
+      --color-text: #e0e0e0;
+      --color-text-muted: #777;
+      --color-accent: #7c6af7;
+      --color-accent-hover: #9d8fff;
+      --color-danger: #f87171;
+      --color-success: #4ade80;
+      --color-warning: #facc15;
+      --font: 'Segoe UI', system-ui, sans-serif;
+      --font-mono: 'Cascadia Code', 'Consolas', monospace;
+      --radius: 6px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--font);
+      background: var(--color-bg);
+      color: var(--color-text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      padding: 14px 24px;
+      background: var(--color-surface);
+      border-bottom: 1px solid var(--color-border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+
+    header h1 { font-size: 15px; font-weight: 600; }
+
+    header .badge {
+      font-size: 10px;
+      padding: 2px 7px;
+      background: var(--color-accent);
+      border-radius: 99px;
+      color: #fff;
+      font-weight: 600;
+    }
+
+    .main-panel {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      flex: 1;
+      overflow: hidden;
+      min-height: 0;
+    }
+
+    /* ---------- Left panel ---------- */
+    .fields-panel {
+      background: var(--color-surface);
+      border-right: 1px solid var(--color-border);
+      overflow-y: auto;
+      padding: 16px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+
+    .panel-title {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-text-muted);
+      margin-bottom: 10px;
+      padding: 0 4px;
+    }
+
+    /* ---------- Right panel ---------- */
+    .config-panel {
+      padding: 16px;
+      overflow-y: auto;
+    }
+
+    /* ---------- Preview ---------- */
+    .preview-section {
+      padding: 14px 24px;
+      background: var(--color-surface);
+      border-top: 1px solid var(--color-border);
+      flex-shrink: 0;
+    }
+
+    .preview-output {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      background: #000;
+      border-radius: var(--radius);
+      padding: 10px 16px;
+      min-height: 36px;
+    }
+
+    /* ---------- Export ---------- */
+    .export-section {
+      padding: 14px 24px;
+      background: var(--color-surface);
+      border-top: 1px solid var(--color-border);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+
+    .export-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+    textarea.export-textarea {
+      width: 100%;
+      height: 90px;
+      background: var(--color-bg);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius);
+      padding: 8px 12px;
+      color: var(--color-text);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      resize: vertical;
+    }
+
+    /* ---------- Buttons ---------- */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 6px 12px;
+      border-radius: var(--radius);
+      border: 1px solid var(--color-border);
+      background: var(--color-surface-2);
+      color: var(--color-text);
+      font-size: 12px;
+      cursor: pointer;
+      transition: background 0.12s;
+      white-space: nowrap;
+    }
+    .btn:hover { background: var(--color-border); }
+    .btn.btn-primary { background: var(--color-accent); border-color: var(--color-accent); color: #fff; }
+    .btn.btn-primary:hover { background: var(--color-accent-hover); border-color: var(--color-accent-hover); }
+    .btn.btn-danger { border-color: var(--color-danger); color: var(--color-danger); }
+    .btn.btn-danger:hover { background: rgba(248,113,113,0.1); }
+    .btn:disabled { opacity: 0.35; cursor: not-allowed; pointer-events: none; }
+    .btn-icon {
+      background: none;
+      border: none;
+      color: var(--color-text-muted);
+      cursor: pointer;
+      padding: 2px 4px;
+      font-size: 13px;
+      line-height: 1;
+      border-radius: 3px;
+    }
+    .btn-icon:hover { color: var(--color-text); background: var(--color-surface-2); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Claude Code Statusline Configurator</h1>
+    <span class="badge">v1</span>
+  </header>
+
+  <div class="main-panel">
+    <aside class="fields-panel">
+      <div class="panel-title">Verfügbare Felder</div>
+      <div id="fields-tree"></div>
+      <div style="margin-top: 12px; border-top: 1px solid var(--color-border); padding-top: 12px;">
+        <button class="btn" onclick="addStaticFieldToClipboard()">+ Statischer Text</button>
+      </div>
+    </aside>
+
+    <main class="config-panel">
+      <div class="panel-title">Konfiguration</div>
+      <div id="lines-container"></div>
+      <button class="btn" id="btn-add-line" onclick="addLine()" style="margin-top:8px;">+ Zeile hinzufügen</button>
+    </main>
+  </div>
+
+  <section class="preview-section">
+    <div class="panel-title" style="margin-bottom:8px;">Vorschau</div>
+    <div class="preview-output" id="preview-output"></div>
+  </section>
+
+  <section class="export-section">
+    <div class="panel-title">Export / Import</div>
+    <div class="export-actions">
+      <button class="btn btn-primary" onclick="downloadConfig()">⬇ Download statusline-config.json</button>
+      <button class="btn" onclick="copyConfig()">📋 Kopieren</button>
+      <button class="btn" onclick="triggerImport()">📂 Laden</button>
+      <input type="file" id="import-input" accept=".json" style="display:none" onchange="importConfig(event)">
+    </div>
+    <textarea class="export-textarea" id="export-textarea" readonly placeholder='{"lines": []}' spellcheck="false"></textarea>
+  </section>
+
+  <!-- Popup overlay -->
+  <div id="popup-overlay"
+       style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:100;"
+       onclick="closePopup()"></div>
+  <!-- Styling popup -->
+  <div id="styling-popup"
+       style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+              background:var(--color-surface);border:1px solid var(--color-border);
+              border-radius:var(--radius);padding:20px;z-index:101;min-width:290px;max-width:340px;">
+  </div>
+
+  <script>
+    // ── JS goes here (Tasks 3-9 append to this block) ──
+  </script>
+</body>
+</html>
