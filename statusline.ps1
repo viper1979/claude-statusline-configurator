@@ -115,3 +115,63 @@ function Format-ProgressBar {
     }
     return $bar
 }
+
+<#
+.SYNOPSIS
+    Renders a single field configuration object as an ANSI-formatted string.
+.PARAMETER Field
+    PSCustomObject with properties: type, key, text, fg, bg, progressStyle
+.PARAMETER Data
+    PSCustomObject parsed from Claude Code's JSON input.
+.OUTPUTS
+    ANSI-formatted string, or empty string if the field value is not found.
+#>
+function Format-Field {
+    param(
+        [PSCustomObject]$Field,
+        [PSCustomObject]$Data
+    )
+
+    $fgAnsi    = if ($Field.fg) { ConvertTo-AnsiFg $Field.fg } else { '' }
+    $bgAnsi    = if ($Field.bg) { ConvertTo-AnsiBg $Field.bg } else { '' }
+    $resetAnsi = if ($Field.fg -or $Field.bg) { $script:AnsiReset } else { '' }
+
+    switch ($Field.type) {
+        'static' {
+            return "${fgAnsi}${bgAnsi}$($Field.text)${resetAnsi}"
+        }
+        'progressbar' {
+            $value = Get-NestedValue $Data $Field.key
+            if ($null -eq $value) { return '' }
+            $bar = Format-ProgressBar -Value ([double]$value) -Style ($Field.progressStyle ?? 'color-coded') -Fg $Field.fg
+            if ($Field.bg) { return "${bgAnsi}${bar}${script:AnsiReset}" }
+            return $bar
+        }
+        default {
+            # type = 'field'
+            $value = Get-NestedValue $Data $Field.key
+            if ($null -eq $value -or "$value" -eq '') { return '' }
+            return "${fgAnsi}${bgAnsi}${value}${resetAnsi}"
+        }
+    }
+}
+
+<#
+.SYNOPSIS
+    Renders a full configured line (all its fields joined) as an ANSI string.
+.PARAMETER Line
+    PSCustomObject with a 'fields' array.
+.PARAMETER Data
+    PSCustomObject parsed from Claude Code's JSON input.
+.OUTPUTS
+    ANSI-formatted string for one status bar line.
+#>
+function Format-Line {
+    param(
+        [PSCustomObject]$Line,
+        [PSCustomObject]$Data
+    )
+    if (-not $Line.fields -or $Line.fields.Count -eq 0) { return '' }
+
+    return ($Line.fields | ForEach-Object { Format-Field $_ $Data }) -join ''
+}

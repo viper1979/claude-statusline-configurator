@@ -82,9 +82,73 @@ Describe 'Format-ProgressBar' {
 }
 
 Describe 'Format-Field' {
-    # Tests added in Task 13
+    BeforeAll {
+        $sampleData = [PSCustomObject]@{
+            model = [PSCustomObject]@{ display_name = 'Opus' }
+            cost  = [PSCustomObject]@{ total_cost_usd = 0.0123 }
+            context_window = [PSCustomObject]@{ used_percentage = 45 }
+        }
+    }
+
+    It 'renders a field type with its raw value' {
+        $field = [PSCustomObject]@{ type='field'; key='model.display_name'; fg=$null; bg=$null }
+        Format-Field $field $sampleData | Should -Match 'Opus'
+    }
+
+    It 'wraps value with fg ANSI color when fg is set' {
+        $field = [PSCustomObject]@{ type='field'; key='model.display_name'; fg='#ffffff'; bg=$null }
+        $result = Format-Field $field $sampleData
+        # #ffffff = RGB 255,255,255
+        $result | Should -Match '255;255;255'
+        $result | Should -Match 'Opus'
+    }
+
+    It 'renders static type with its text' {
+        $field = [PSCustomObject]@{ type='static'; text=' | '; fg=$null; bg=$null }
+        Format-Field $field $sampleData | Should -Be ' | '
+    }
+
+    It 'renders static type with fg color' {
+        $field = [PSCustomObject]@{ type='static'; text='|'; fg='#888888'; bg=$null }
+        $result = Format-Field $field $sampleData
+        $result | Should -Match '\|'
+        # #888888 = RGB 136,136,136
+        $result | Should -Match '136;136;136'
+    }
+
+    It 'renders progressbar type as a bar string' {
+        $field = [PSCustomObject]@{ type='progressbar'; key='context_window.used_percentage'; progressStyle='block'; fg=$null; bg=$null }
+        $result = Format-Field $field $sampleData
+        $result | Should -Match '45%'
+        $result | Should -Match '\['
+    }
+
+    It 'returns empty string for unknown field path' {
+        $field = [PSCustomObject]@{ type='field'; key='does.not.exist'; fg=$null; bg=$null }
+        Format-Field $field $sampleData | Should -BeNullOrEmpty
+    }
 }
 
 Describe 'Format-Line' {
-    # Tests added in Task 13
+    BeforeAll {
+        $sampleData = [PSCustomObject]@{
+            model = [PSCustomObject]@{ display_name = 'Sonnet' }
+        }
+    }
+
+    It 'joins multiple field outputs into one string' {
+        $fields = @(
+            [PSCustomObject]@{ type='field'; key='model.display_name'; fg=$null; bg=$null },
+            [PSCustomObject]@{ type='static'; text=' v1'; fg=$null; bg=$null }
+        )
+        $line = [PSCustomObject]@{ fields = $fields }
+        $result = Format-Line $line $sampleData
+        $result | Should -Match 'Sonnet'
+        $result | Should -Match 'v1'
+    }
+
+    It 'returns empty string for a line with no fields' {
+        $line = [PSCustomObject]@{ fields = @() }
+        Format-Line $line $sampleData | Should -BeNullOrEmpty
+    }
 }
