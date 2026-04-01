@@ -200,6 +200,7 @@ Describe 'Invoke-Main' {
         } | ConvertTo-Json -Depth 10
         $path = Join-Path $TestDrive 'config-nokey.json'
         Set-Content -Path $path -Value $configNoKey -Encoding UTF8
-        { Invoke-Main -ConfigPath $path -InputJson '{"model":{}}' } | Should -Not -Throw
+        $result = Invoke-Main -ConfigPath $path -InputJson '{"model":{}}'
+        $result | Should -BeNullOrEmpty
     }
 }
