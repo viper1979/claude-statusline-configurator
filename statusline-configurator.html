@@ -215,7 +215,131 @@
   </div>
 
   <script>
-    // ── JS goes here (Tasks 3-9 append to this block) ──
+// ─── Constants ────────────────────────────────────────────────────────────
+
+const AVAILABLE_FIELDS = [
+  { group: 'Model', items: [
+    { key: 'model.display_name', label: 'Display Name' },
+    { key: 'model.id',           label: 'Model ID' },
+  ]},
+  { group: 'Cost', items: [
+    { key: 'cost.total_cost_usd',         label: 'Total Cost (USD)' },
+    { key: 'cost.total_duration_ms',      label: 'Duration (ms)' },
+    { key: 'cost.total_lines_added',      label: 'Lines Added' },
+    { key: 'cost.total_lines_removed',    label: 'Lines Removed' },
+  ]},
+  { group: 'Context Window', items: [
+    { key: 'context_window.used_percentage',      label: 'Used %' },
+    { key: 'context_window.remaining_percentage', label: 'Remaining %' },
+    { key: 'context_window.total_input_tokens',   label: 'Input Tokens' },
+    { key: 'context_window.total_output_tokens',  label: 'Output Tokens' },
+    { key: 'context_window.context_window_size',  label: 'Window Size' },
+  ]},
+  { group: 'Rate Limits', items: [
+    { key: 'rate_limits.five_hour.used_percentage', label: '5h Used %' },
+    { key: 'rate_limits.seven_day.used_percentage', label: '7d Used %' },
+  ]},
+  { group: 'Workspace', items: [
+    { key: 'workspace.current_dir',  label: 'Current Dir' },
+    { key: 'workspace.project_dir',  label: 'Project Dir' },
+    { key: 'cwd',                    label: 'CWD' },
+  ]},
+  { group: 'Session', items: [
+    { key: 'version',              label: 'Version' },
+    { key: 'session_id',           label: 'Session ID' },
+    { key: 'agent.name',           label: 'Agent Name' },
+    { key: 'vim.mode',             label: 'Vim Mode' },
+  ]},
+  { group: 'Worktree', items: [
+    { key: 'worktree.name',            label: 'Name' },
+    { key: 'worktree.branch',          label: 'Branch' },
+    { key: 'worktree.original_branch', label: 'Original Branch' },
+  ]},
+];
+
+// Fields that are percentages (offer progress bar in popup)
+const PERCENTAGE_KEYS = new Set([
+  'context_window.used_percentage',
+  'context_window.remaining_percentage',
+  'rate_limits.five_hour.used_percentage',
+  'rate_limits.seven_day.used_percentage',
+]);
+
+// Sample data shown in preview
+const SAMPLE_DATA = {
+  cwd: '/home/user/myproject',
+  session_id: 'abc123def456',
+  transcript_path: '/tmp/transcript.jsonl',
+  model: { id: 'claude-opus-4-6', display_name: 'Opus' },
+  workspace: { current_dir: '/home/user/myproject', project_dir: '/home/user/myproject' },
+  version: '1.0.80',
+  output_style: { name: 'default' },
+  cost: { total_cost_usd: 0.01234, total_duration_ms: 45000, total_api_duration_ms: 2300, total_lines_added: 156, total_lines_removed: 23 },
+  context_window: {
+    total_input_tokens: 15234, total_output_tokens: 4521, context_window_size: 200000,
+    used_percentage: 16, remaining_percentage: 84,
+    current_usage: { input_tokens: 8500, output_tokens: 1200, cache_creation_input_tokens: 5000, cache_read_input_tokens: 2000 },
+  },
+  exceeds_200k_tokens: false,
+  rate_limits: {
+    five_hour: { used_percentage: 23.5, resets_at: 1738425600 },
+    seven_day:  { used_percentage: 41.2, resets_at: 1738857600 },
+  },
+  vim: { mode: 'NORMAL' },
+  agent: { name: '' },
+  worktree: { name: '', path: '', branch: '', original_cwd: '', original_branch: 'main' },
+};
+
+// ─── ID generation ────────────────────────────────────────────────────────
+
+let _idCounter = 0;
+function generateId() { return 'id-' + (++_idCounter); }
+
+// ─── Left panel rendering ─────────────────────────────────────────────────
+
+function renderFieldsPanel() {
+  const tree = document.getElementById('fields-tree');
+  tree.innerHTML = '';
+
+  for (const group of AVAILABLE_FIELDS) {
+    // Group header
+    const header = document.createElement('div');
+    header.style.cssText = 'font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:var(--color-text-muted);padding:8px 4px 4px;cursor:pointer;user-select:none;display:flex;align-items:center;gap:4px;';
+    header.innerHTML = `<span class="group-arrow" style="display:inline-block;transition:transform 0.15s;">▶</span> ${group.group}`;
+
+    const itemList = document.createElement('div');
+    itemList.style.cssText = 'display:none;';
+
+    header.addEventListener('click', () => {
+      const open = itemList.style.display !== 'none';
+      itemList.style.display = open ? 'none' : 'block';
+      header.querySelector('.group-arrow').style.transform = open ? '' : 'rotate(90deg)';
+    });
+
+    for (const field of group.items) {
+      const item = document.createElement('div');
+      item.className = 'field-source';
+      item.dataset.fieldKey = field.key;
+      item.dataset.fieldLabel = field.label;
+      item.dataset.fieldGroup = group.group;
+      item.style.cssText = 'padding:5px 8px;border-radius:4px;font-size:12px;cursor:grab;display:flex;align-items:center;gap:6px;transition:background 0.1s;';
+      item.innerHTML = `
+        <span style="color:var(--color-text-muted);font-size:10px;">⠿</span>
+        <span>${field.label}</span>
+        ${PERCENTAGE_KEYS.has(field.key) ? '<span style="font-size:9px;color:var(--color-accent);margin-left:auto;border:1px solid var(--color-accent);border-radius:3px;padding:1px 4px;">%</span>' : ''}
+      `;
+      item.addEventListener('mouseenter', () => item.style.background = 'var(--color-surface-2)');
+      item.addEventListener('mouseleave', () => item.style.background = '');
+      itemList.appendChild(item);
+    }
+
+    tree.appendChild(header);
+    tree.appendChild(itemList);
+  }
+}
+
+// Initialize panel immediately
+renderFieldsPanel();
   </script>
 </body>
 </html>
