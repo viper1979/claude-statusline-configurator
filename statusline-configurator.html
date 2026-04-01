@@ -202,7 +202,7 @@
       <button class="btn btn-primary" onclick="downloadConfig()">⬇ Download statusline-config.json</button>
       <button class="btn" onclick="copyConfig()">📋 Kopieren</button>
       <button class="btn" onclick="triggerImport()">📂 Laden</button>
-      <input type="file" id="import-input" accept=".json" style="display:none" onchange="importConfig(event)">
+      <input type="file" id="import-input" accept=".json" style="display:none" aria-label="Import config file" onchange="importConfig(event)">
     </div>
     <textarea class="export-textarea" id="export-textarea" readonly placeholder='{"lines": []}' spellcheck="false"></textarea>
   </section>
@@ -546,7 +546,98 @@ function renderPreview() {
 
   out.innerHTML = lines.join('<br>');
 }
-function updateExportTextarea() {}   // Task 9: replaced with export logic
+// ─── Export ───────────────────────────────────────────────────────────────
+
+function buildExportJson() {
+  const lines = state.lines.map(line => ({
+    fields: line.fields.map(f => {
+      const base = { type: f.type };
+      if (f.key)           base.key = f.key;
+      if (f.text != null)  base.text = f.text;
+      if (f.fg)            base.fg = f.fg;
+      if (f.bg)            base.bg = f.bg;
+      if (f.progressStyle) base.progressStyle = f.progressStyle;
+      return base;
+    }),
+  }));
+  return JSON.stringify({ lines }, null, 2);
+}
+
+function updateExportTextarea() {
+  document.getElementById('export-textarea').value = buildExportJson();
+}
+
+function downloadConfig() {
+  const json = buildExportJson();
+  const blob = new Blob([json], { type: 'application/json' });
+  const url  = URL.createObjectURL(blob);
+  const a    = Object.assign(document.createElement('a'), { href: url, download: 'statusline-config.json' });
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function copyConfig() {
+  const json = buildExportJson();
+  navigator.clipboard.writeText(json).then(() => {
+    const btn = document.querySelector('.export-actions .btn:nth-child(2)');
+    const orig = btn.textContent;
+    btn.textContent = '✓ Kopiert';
+    setTimeout(() => btn.textContent = orig, 1500);
+  });
+}
+
+// ─── Import ───────────────────────────────────────────────────────────────
+
+function triggerImport() {
+  document.getElementById('import-input').click();
+}
+
+function importConfig(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const hasContent = state.lines.some(l => l.fields.length > 0);
+  if (hasContent && !confirm('Die aktuelle Konfiguration wird überschrieben. Fortfahren?')) {
+    event.target.value = '';
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const json = JSON.parse(e.target.result);
+      loadConfig(json);
+    } catch {
+      alert('Ungültige JSON-Datei.');
+    }
+    event.target.value = '';
+  };
+  reader.readAsText(file);
+}
+
+function loadConfig(json) {
+  if (!json.lines || !Array.isArray(json.lines)) {
+    alert('Konfigurationsformat ungültig: "lines" Array fehlt.');
+    return;
+  }
+
+  state.lines = json.lines.map(line => ({
+    id:     generateId(),
+    fields: (line.fields || []).map(f => ({
+      id:            generateId(),
+      type:          f.type || 'field',
+      key:           f.key  || null,
+      text:          f.text || '',
+      fg:            f.fg   || null,
+      bg:            f.bg   || null,
+      progressStyle: f.progressStyle || 'color-coded',
+    })),
+  }));
+
+  render();
+}
 
 // Bootstrap: one empty line on load
 addLine();
