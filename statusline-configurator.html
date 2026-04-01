@@ -340,6 +340,128 @@ function renderFieldsPanel() {
 
 // Initialize panel immediately
 renderFieldsPanel();
+
+// ─── State ────────────────────────────────────────────────────────────────
+
+const state = { lines: [] };
+
+// ─── Line management ──────────────────────────────────────────────────────
+
+function addLine() {
+  if (state.lines.length >= 10) return;
+  state.lines.push({ id: generateId(), fields: [] });
+  render();
+}
+
+function removeLine(lineId) {
+  state.lines = state.lines.filter(l => l.id !== lineId);
+  render();
+}
+
+// ─── Field management ─────────────────────────────────────────────────────
+
+function addFieldToLine(lineId, fieldObj) {
+  const line = state.lines.find(l => l.id === lineId);
+  if (!line) return;
+  line.fields.push(fieldObj);
+  render();
+}
+
+function removeFieldFromLine(lineId, fieldId) {
+  const line = state.lines.find(l => l.id === lineId);
+  if (!line) return;
+  line.fields = line.fields.filter(f => f.id !== fieldId);
+  render();
+}
+
+function addStaticFieldToClipboard() {
+  const text = prompt('Statischer Text:');
+  if (text === null || text === '') return;
+  // Add to first line, or prompt if multiple
+  if (state.lines.length === 0) {
+    alert('Erstelle zuerst eine Zeile.');
+    return;
+  }
+  const targetLine = state.lines.length === 1
+    ? state.lines[0]
+    : state.lines[parseInt(prompt('Zu welcher Zeile? (1–' + state.lines.length + ')') || '1') - 1];
+  if (!targetLine) return;
+  targetLine.fields.push({ id: generateId(), type: 'static', text, fg: null, bg: null });
+  render();
+}
+
+// ─── Main render ──────────────────────────────────────────────────────────
+
+function render() {
+  renderLines();
+  renderPreview();
+  updateExportTextarea();
+  document.getElementById('btn-add-line').disabled = state.lines.length >= 10;
+}
+
+function renderLines() {
+  const container = document.getElementById('lines-container');
+  container.innerHTML = '';
+
+  state.lines.forEach((line, lineIndex) => {
+    const lineEl = document.createElement('div');
+    lineEl.style.cssText = 'margin-bottom:12px;';
+    lineEl.innerHTML = `
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+        <span style="font-size:11px;color:var(--color-text-muted);">Zeile ${lineIndex + 1}</span>
+        <button class="btn btn-danger" style="padding:2px 8px;font-size:11px;" onclick="removeLine('${line.id}')">✕ Entfernen</button>
+      </div>
+      <div class="line-drop-zone" data-line-id="${line.id}"
+           style="min-height:44px;background:var(--color-surface);border:1.5px dashed var(--color-border);
+                  border-radius:var(--radius);padding:6px 8px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
+        ${line.fields.length === 0
+          ? '<span style="color:var(--color-text-muted);font-size:12px;pointer-events:none;">Felder hier hineinziehen…</span>'
+          : line.fields.map(f => renderFieldChip(f, line.id)).join('')
+        }
+      </div>
+    `;
+    container.appendChild(lineEl);
+  });
+
+  initSortable(); // wired in Task 5
+}
+
+function renderFieldChip(field, lineId) {
+  const bg = field.bg ? `background:${field.bg};` : '';
+  const fg = field.fg ? `color:${field.fg};` : '';
+  const label = fieldLabel(field);
+  return `
+    <span class="field-chip" data-field-id="${field.id}" data-line-id="${lineId}"
+          style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;
+                 border-radius:4px;font-size:12px;background:var(--color-surface-2);
+                 border:1px solid var(--color-border);${bg}${fg}cursor:default;">
+      <span>${label}</span>
+      <button class="btn-icon" title="Styling" onclick="openStylePopup('${lineId}','${field.id}')">🎨</button>
+      <button class="btn-icon" title="Entfernen" onclick="removeFieldFromLine('${lineId}','${field.id}')">✕</button>
+    </span>
+  `;
+}
+
+function fieldLabel(field) {
+  if (field.type === 'static') return `"${field.text}"`;
+  if (field.type === 'field' || field.type === 'progressbar') {
+    // Find label in AVAILABLE_FIELDS
+    for (const g of AVAILABLE_FIELDS) {
+      const found = g.items.find(i => i.key === field.key);
+      if (found) return found.label;
+    }
+    return field.key;
+  }
+  return '?';
+}
+
+// ─── Stubs — replaced in later tasks ─────────────────────────────────────
+function initSortable() {}           // Task 5: replaced with Sortable.js wiring
+function renderPreview() {}          // Task 8: replaced with live preview
+function updateExportTextarea() {}   // Task 9: replaced with export logic
+
+// Bootstrap: one empty line on load
+addLine();
   </script>
 </body>
 </html>
