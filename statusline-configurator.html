@@ -453,7 +453,7 @@ function renderFieldChip(field, lineId) {
 }
 
 function fieldLabel(field) {
-  if (field.type === 'static') return `"${field.text}"`;
+  if (field.type === 'static') return `"${escapeHtml(field.text)}"`;
   if (field.type === 'field' || field.type === 'progressbar') {
     // Find label in AVAILABLE_FIELDS
     for (const g of AVAILABLE_FIELDS) {
@@ -499,12 +499,21 @@ function initSortable() {
       draggable: '.field-chip',
       onAdd(evt) {
         evt.item.remove();
-        const sourceEl = evt.clone;
-        const fieldKey = sourceEl.dataset.fieldKey;
-        const isPercentage = PERCENTAGE_KEYS.has(fieldKey);
-        const newField = isPercentage
-          ? { id: generateId(), type: 'progressbar', key: fieldKey, progressStyle: 'color-coded', fg: null, bg: null }
-          : { id: generateId(), type: 'field', key: fieldKey, fg: null, bg: null };
+        let newField;
+        if (evt.clone?.dataset?.fieldKey) {
+          // Left-panel clone → create a new field object
+          const fieldKey = evt.clone.dataset.fieldKey;
+          const isPercentage = PERCENTAGE_KEYS.has(fieldKey);
+          newField = isPercentage
+            ? { id: generateId(), type: 'progressbar', key: fieldKey, progressStyle: 'color-coded', fg: null, bg: null }
+            : { id: generateId(), type: 'field', key: fieldKey, fg: null, bg: null };
+          _draggedField = null;
+        } else {
+          // Zone-to-zone chip move → use the field buffered by onRemove
+          newField = _draggedField;
+          _draggedField = null;
+          if (!newField) return;
+        }
         const line = state.lines.find(l => l.id === lineId);
         if (!line) return;
         const safeIndex = Math.min(evt.newIndex, line.fields.length);
@@ -525,6 +534,7 @@ function initSortable() {
         const fieldId = evt.item.dataset.fieldId;
         const line = state.lines.find(l => l.id === lineId);
         if (!line) return;
+        _draggedField = line.fields.find(f => f.id === fieldId) || null;
         line.fields = line.fields.filter(f => f.id !== fieldId);
       },
     });
@@ -645,6 +655,7 @@ addLine();
 // ─── Styling popup ────────────────────────────────────────────────────────
 
 let _popupContext = null; // { lineId, fieldId }
+let _draggedField = null; // buffer for zone-to-zone chip drag
 
 function openStylePopup(lineId, fieldId) {
   const line = state.lines.find(l => l.id === lineId);
@@ -779,7 +790,8 @@ function makeProgressBar(value, style, fg) {
   const filled = Math.round(pct / 10);   // 10 segments
   const empty  = 10 - filled;
 
-  const color = fg || (pct < 50 ? PB_COLORS.low : pct < 80 ? PB_COLORS.mid : PB_COLORS.high);
+  const thresholdColor = pct < 50 ? PB_COLORS.low : pct < 80 ? PB_COLORS.mid : PB_COLORS.high;
+  const color = fg ?? (style === 'color-coded' ? thresholdColor : null);
 
   let bar;
   if (style === 'slim') {
@@ -813,7 +825,8 @@ function renderFieldHtml(field, data) {
 
   if (field.type === 'progressbar') {
     const { bar, color } = makeProgressBar(raw, field.progressStyle || 'color-coded', fg);
-    const finalStyle = [fg ? `color:${fg};` : `color:${color};`, bg ? `background:${bg};padding:1px 3px;border-radius:3px;` : ''].join('');
+    const colorStyle = color ? `color:${color};` : '';
+    const finalStyle = [colorStyle, bg ? `background:${bg};padding:1px 3px;border-radius:3px;` : ''].join('');
     return `<span style="${finalStyle}">${bar}</span>`;
   }
 
