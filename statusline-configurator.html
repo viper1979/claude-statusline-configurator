@@ -193,7 +193,7 @@
 
   <section class="preview-section">
     <div class="panel-title" style="margin-bottom:8px;">Vorschau</div>
-    <div class="preview-output" id="preview-output"></div>
+    <div class="preview-output" id="preview-output" aria-live="polite"></div>
   </section>
 
   <section class="export-section">
@@ -530,7 +530,22 @@ function initSortable() {
     });
   });
 }
-function renderPreview() {}          // Task 8: replaced with live preview
+function renderPreview() {
+  const out = document.getElementById('preview-output');
+  if (state.lines.length === 0) {
+    out.innerHTML = '<span style="color:var(--color-text-muted);">Keine Zeilen konfiguriert.</span>';
+    return;
+  }
+
+  const lines = state.lines.map(line => {
+    if (line.fields.length === 0) {
+      return '<span style="color:var(--color-text-muted);">(leere Zeile)</span>';
+    }
+    return line.fields.map(f => renderFieldHtml(f, SAMPLE_DATA)).join('');
+  });
+
+  out.innerHTML = lines.join('<br>');
+}
 function updateExportTextarea() {}   // Task 9: replaced with export logic
 
 // Bootstrap: one empty line on load
