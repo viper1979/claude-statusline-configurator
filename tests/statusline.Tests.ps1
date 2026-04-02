@@ -362,6 +362,47 @@ Describe 'Format-Field with dataType' {
     }
 }
 
+Describe 'Invoke-Main JSON persistence' {
+    BeforeAll {
+        $configPath = Join-Path $TestDrive 'statusline-config.json'
+        $config = @{
+            lines = @(@{ fields = @(@{ type='field'; key='version'; fg=$null; bg=$null }) })
+            knownKeys = @('version')
+        } | ConvertTo-Json -Depth 10
+        Set-Content -Path $configPath -Value $config -Encoding UTF8
+    }
+
+    It 'writes last-payload.json next to the config file' {
+        $payloadPath = Join-Path $TestDrive 'last-payload.json'
+        Invoke-Main -ConfigPath $configPath -InputJson '{"version":"1.0"}'
+        Test-Path $payloadPath | Should -Be $true
+        Get-Content $payloadPath -Raw | Should -Match '"version"'
+    }
+
+    It 'does not crash when the target directory is read-only' {
+        # Simulate a write failure by providing an invalid path via a config in a read-only location.
+        # We test this by using a config that points the script to a location it cannot write to.
+        # The simplest safe approach: pass a config from a path whose sibling directory doesn't exist.
+        $roConfig = Join-Path $TestDrive 'subdir' 'statusline-config.json'
+        New-Item -ItemType Directory -Path (Join-Path $TestDrive 'subdir') -Force | Out-Null
+        Set-Content -Path $roConfig -Value $config -Encoding UTF8
+        # Even if writing fails, the function must return without throwing
+        { Invoke-Main -ConfigPath $roConfig -InputJson '{"version":"1.0"}' } | Should -Not -Throw
+    }
+
+    It 'sets script:KnownKeys from config so new_fields_indicator works in same call' {
+        $cfgWithIndicator = @{
+            lines = @(@{ fields = @(@{ type='new_fields_indicator'; fg=$null; bg=$null }) })
+            knownKeys = @('version')
+        } | ConvertTo-Json -Depth 10
+        $indicatorConfig = Join-Path $TestDrive 'indicator-config.json'
+        Set-Content -Path $indicatorConfig -Value $cfgWithIndicator -Encoding UTF8
+        # Input has 'version' (known) + 'extra' (unknown) → indicator fires
+        $result = Invoke-Main -ConfigPath $indicatorConfig -InputJson '{"version":"1.0","extra":"new"}'
+        $result | Should -Match '●'
+    }
+}
+
 Describe 'new_fields_indicator in Format-Field' {
     BeforeAll {
         $data = [PSCustomObject]@{

@@ -311,6 +311,9 @@ function Format-Line {
 <#
 .SYNOPSIS
     Entry point. Reads config file and input JSON, renders all lines to stdout.
+    Also persists the received payload to last-payload.json (next to the config file)
+    for field discovery, and exposes config.knownKeys to $script:KnownKeys so that
+    the new_fields_indicator field type can detect unknown keys within the same call.
 .PARAMETER ConfigPath
     Full path to statusline-config.json. Defaults to the script's own directory.
 .PARAMETER InputJson
@@ -334,6 +337,17 @@ function Invoke-Main {
         $InputJson = try { [Console]::In.ReadToEnd() } catch { '{}' }
     }
     $data = try { $InputJson | ConvertFrom-Json } catch { return '' }
+
+    # Persist the received payload for field discovery (fail silently)
+    try {
+        $payloadPath = Join-Path (Split-Path $ConfigPath -Parent) 'last-payload.json'
+        $InputJson | Set-Content -Path $payloadPath -Encoding UTF8
+    } catch {
+        # Silently ignore — writing the payload file is optional diagnostics only
+    }
+
+    # Expose knownKeys to script scope so Format-Field can access them for new_fields_indicator
+    $script:KnownKeys = if ($config.knownKeys) { $config.knownKeys } else { $null }
 
     # Render each line
     $output = $config.lines | ForEach-Object { Format-Line $_ $data } | Where-Object { $_ -ne '' }
