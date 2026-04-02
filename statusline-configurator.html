@@ -179,9 +179,6 @@
     <aside class="fields-panel">
       <div class="panel-title">Verfügbare Felder</div>
       <div id="fields-tree"></div>
-      <div style="margin-top: 12px; border-top: 1px solid var(--color-border); padding-top: 12px;">
-        <button class="btn" onclick="addStaticFieldToClipboard()">+ Statischer Text</button>
-      </div>
     </aside>
 
     <main class="config-panel">
@@ -206,17 +203,6 @@
     </div>
     <textarea class="export-textarea" id="export-textarea" readonly placeholder='{"lines": []}' spellcheck="false"></textarea>
   </section>
-
-  <!-- Popup overlay -->
-  <div id="popup-overlay"
-       style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:100;"
-       onclick="closePopup()"></div>
-  <!-- Styling popup -->
-  <div id="styling-popup"
-       style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
-              background:var(--color-surface);border:1px solid var(--color-border);
-              border-radius:var(--radius);padding:20px;z-index:101;min-width:290px;max-width:340px;">
-  </div>
 
   <!-- Edit Dialog -->
   <div id="edit-dialog-overlay"
@@ -458,22 +444,6 @@ function removeFieldFromLine(lineId, fieldId) {
   render();
 }
 
-function addStaticFieldToClipboard() {
-  const text = prompt('Statischer Text:');
-  if (text === null || text === '') return;
-  // Add to first line, or prompt if multiple
-  if (state.lines.length === 0) {
-    alert('Erstelle zuerst eine Zeile.');
-    return;
-  }
-  const targetLine = state.lines.length === 1
-    ? state.lines[0]
-    : state.lines[parseInt(prompt('Zu welcher Zeile? (1–' + state.lines.length + ')') || '1') - 1];
-  if (!targetLine) return;
-  targetLine.fields.push({ id: generateId(), type: 'static', text, fg: null, bg: null });
-  render();
-}
-
 // ─── Main render ──────────────────────────────────────────────────────────
 
 function render() {
@@ -520,14 +490,15 @@ function renderFieldChip(field, lineId) {
                  border-radius:4px;font-size:12px;background:var(--color-surface-2);
                  border:1px solid var(--color-border);${bg}${fg}cursor:default;">
       <span>${label}</span>
-      <button class="btn-icon" title="Styling" onclick="openStylePopup('${lineId}','${field.id}')">🎨</button>
+      <button class="btn-icon" title="Bearbeiten" onclick="openEditDialog('line','${lineId}','${field.id}')">✏️</button>
       <button class="btn-icon" title="Entfernen" onclick="removeFieldFromLine('${lineId}','${field.id}')">✕</button>
     </span>
   `;
 }
 
 function fieldLabel(field) {
-  if (field.type === 'static') return `"${escapeHtml(field.text)}"`;
+  if (field.type === 'static')              return `"${escapeHtml(field.text)}"`;
+  if (field.type === 'new_fields_indicator') return '● Neue Felder';
   if (field.type === 'field' || field.type === 'progressbar') {
     // Find label in AVAILABLE_FIELDS
     for (const g of AVAILABLE_FIELDS) {
@@ -768,12 +739,9 @@ function loadConfig(json) {
 // Bootstrap: one empty line on load
 addLine();
 
-// ─── Styling popup ────────────────────────────────────────────────────────
-
-let _popupContext = null; // { lineId, fieldId }
-let _draggedField = null; // buffer for zone-to-zone chip drag
-
 // ─── Edit Dialog ─────────────────────────────────────────────────────────
+
+let _draggedField = null; // buffer for zone-to-zone chip drag
 
 let _editCtx = null;   // { source: 'line'|'palette'|'palette-new', lineId, fieldId }
 let _editDraft = null; // deep copy of the field being edited
@@ -1084,123 +1052,6 @@ function saveEditDialog() {
   }
 
   closeEditDialog();
-  render();
-}
-
-function openStylePopup(lineId, fieldId) {
-  const line = state.lines.find(l => l.id === lineId);
-  if (!line) return;
-  const field = line.fields.find(f => f.id === fieldId);
-  if (!field) return;
-
-  _popupContext = { lineId, fieldId };
-
-  const isProgressCandidate = field.type === 'progressbar' || PERCENTAGE_KEYS.has(field.key);
-  const currentStyle = field.progressStyle || 'color-coded';
-  const currentFg = field.fg || '';
-  const currentBg = field.bg || '';
-  const label = fieldLabel(field);
-
-  const popup = document.getElementById('styling-popup');
-  popup.innerHTML = `
-    <div style="margin-bottom:14px;font-weight:600;font-size:13px;">${label}</div>
-
-    ${isProgressCandidate ? `
-    <div style="margin-bottom:12px;">
-      <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:6px;">Darstellung</div>
-      <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;margin-right:12px;cursor:pointer;">
-        <input type="radio" name="popup-type" value="field" ${field.type !== 'progressbar' ? 'checked' : ''}> Wert
-      </label>
-      <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;">
-        <input type="radio" name="popup-type" value="progressbar" ${field.type === 'progressbar' ? 'checked' : ''}> Progress Bar
-      </label>
-    </div>
-    <div id="popup-pb-section" style="${field.type === 'progressbar' ? '' : 'display:none;'}margin-bottom:12px;">
-      <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:6px;">Progress Bar Stil</div>
-      ${[
-        ['block',       '[▓▓▓▓░░░░] 23%',  'Block'],
-        ['slim',        '████░░░░ 23%',    'Slim'],
-        ['color-coded', '[▓▓▓░░░░░] 23%',  'Farbkodiert (grün/gelb/rot)'],
-      ].map(([val, ex, lbl]) => `
-        <label style="display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:5px;cursor:pointer;">
-          <input type="radio" name="popup-pb-style" value="${val}" ${currentStyle === val ? 'checked' : ''}>
-          <code style="font-size:11px;color:var(--color-text-muted);">${ex}</code>
-          <span>${lbl}</span>
-        </label>
-      `).join('')}
-    </div>
-    ` : ''}
-
-    <div style="margin-bottom:10px;">
-      <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:6px;">Vordergrundfarbe</div>
-      <div style="display:flex;align-items:center;gap:8px;">
-        <input type="color" id="popup-fg" value="${currentFg || '#e0e0e0'}" style="cursor:pointer;">
-        <label style="font-size:12px;cursor:pointer;display:flex;align-items:center;gap:4px;">
-          <input type="checkbox" id="popup-fg-none" ${!currentFg ? 'checked' : ''}> Keine Farbe
-        </label>
-      </div>
-    </div>
-
-    <div style="margin-bottom:16px;">
-      <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:6px;">Hintergrundfarbe</div>
-      <div style="display:flex;align-items:center;gap:8px;">
-        <input type="color" id="popup-bg" value="${currentBg || '#333333'}" style="cursor:pointer;">
-        <label style="font-size:12px;cursor:pointer;display:flex;align-items:center;gap:4px;">
-          <input type="checkbox" id="popup-bg-none" ${!currentBg ? 'checked' : ''}> Keine Farbe
-        </label>
-      </div>
-    </div>
-
-    <div style="display:flex;justify-content:flex-end;gap:8px;">
-      <button class="btn" onclick="closePopup()">Abbrechen</button>
-      <button class="btn btn-primary" onclick="applyPopup()">Übernehmen</button>
-    </div>
-  `;
-
-  // Wire: show/hide progress bar section when type radio changes
-  if (isProgressCandidate) {
-    popup.querySelectorAll('[name="popup-type"]').forEach(r => {
-      r.addEventListener('change', () => {
-        document.getElementById('popup-pb-section').style.display =
-          r.value === 'progressbar' && r.checked ? '' : 'none';
-      });
-    });
-  }
-
-  document.getElementById('popup-overlay').style.display = '';
-  popup.style.display = '';
-}
-
-function closePopup() {
-  document.getElementById('popup-overlay').style.display = 'none';
-  document.getElementById('styling-popup').style.display = 'none';
-  _popupContext = null;
-}
-
-function applyPopup() {
-  if (!_popupContext) return;
-  const { lineId, fieldId } = _popupContext;
-  const line = state.lines.find(l => l.id === lineId);
-  if (!line) return;
-  const field = line.fields.find(f => f.id === fieldId);
-  if (!field) return;
-
-  const fgNone = document.getElementById('popup-fg-none')?.checked;
-  const bgNone = document.getElementById('popup-bg-none')?.checked;
-  field.fg = fgNone ? null : document.getElementById('popup-fg')?.value || null;
-  field.bg = bgNone ? null : document.getElementById('popup-bg')?.value || null;
-
-  const typeRadio = document.querySelector('[name="popup-type"]:checked');
-  if (typeRadio) {
-    field.type = typeRadio.value;
-  }
-
-  const pbStyleRadio = document.querySelector('[name="popup-pb-style"]:checked');
-  if (pbStyleRadio) {
-    field.progressStyle = pbStyleRadio.value;
-  }
-
-  closePopup();
   render();
 }
 
