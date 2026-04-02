@@ -411,6 +411,77 @@ function renderFieldsPanel() {
 // Initialize panel immediately
 renderFieldsPanel();
 
+/**
+ * Renders the "Eigene Felder" (custom fields) group at the bottom of the fields palette.
+ * Appends directly to #fields-tree. Replaces previous group if re-rendered.
+ */
+function renderCustomFieldsGroup() {
+  const tree = document.getElementById('fields-tree');
+
+  // Remove existing custom group if present (on re-render)
+  const existing = document.getElementById('custom-fields-group');
+  if (existing) existing.remove();
+
+  const wrapper = document.createElement('div');
+  wrapper.id = 'custom-fields-group';
+
+  // Group header (collapsible)
+  const header = document.createElement('div');
+  header.style.cssText = 'font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:var(--color-text-muted);padding:8px 4px 4px;cursor:pointer;user-select:none;display:flex;align-items:center;gap:4px;';
+  header.innerHTML = '<span class="group-arrow" style="display:inline-block;transition:transform 0.15s;">▶</span> Eigene Felder';
+
+  const itemList = document.createElement('div');
+  itemList.className = 'field-group-list';
+  itemList.id = 'custom-fields-list';
+  itemList.style.cssText = 'display:none;';
+
+  header.addEventListener('click', () => {
+    const isOpen = itemList.style.display !== 'none';
+    itemList.style.display = isOpen ? 'none' : 'block';
+    header.querySelector('.group-arrow').style.transform = isOpen ? '' : 'rotate(90deg)';
+  });
+
+  // Render each custom field as a draggable palette entry
+  for (const cf of state.customFields) {
+    const item = document.createElement('div');
+    item.className = 'field-source';
+    item.dataset.customFieldId = cf.id;
+    item.style.cssText = 'padding:5px 8px;border-radius:4px;font-size:12px;cursor:grab;display:flex;align-items:center;gap:6px;transition:background 0.1s;';
+    item.innerHTML = `
+      <span style="color:var(--color-text-muted);font-size:10px;">⠿</span>
+      <span style="flex:1;">${escapeHtml(cf.label || cf.text || '?')}</span>
+      <button class="btn-icon" title="Bearbeiten" style="font-size:11px;"
+              onclick="event.stopPropagation();openEditDialog('palette',null,'${cf.id}')">✏️</button>
+      <button class="btn-icon" title="Löschen" style="font-size:11px;"
+              onclick="event.stopPropagation();deleteCustomField('${cf.id}')">🗑️</button>
+    `;
+    item.addEventListener('mouseenter', () => item.style.background = 'var(--color-surface-2)');
+    item.addEventListener('mouseleave', () => item.style.background = '');
+    itemList.appendChild(item);
+  }
+
+  // "+ Neues Feld" button at the bottom of the group
+  const addBtn = document.createElement('button');
+  addBtn.className = 'btn';
+  addBtn.style.cssText = 'width:100%;margin-top:4px;font-size:11px;padding:4px 8px;';
+  addBtn.textContent = '+ Neues Feld';
+  addBtn.onclick = () => openEditDialog('palette-new', null, null);
+  itemList.appendChild(addBtn);
+
+  wrapper.appendChild(header);
+  wrapper.appendChild(itemList);
+  tree.appendChild(wrapper);
+}
+
+/**
+ * Deletes a custom field from state.customFields by its id.
+ * Already-placed copies in lines are not affected (they are independent static fields).
+ */
+function deleteCustomField(cfId) {
+  state.customFields = state.customFields.filter(f => f.id !== cfId);
+  render();
+}
+
 // ─── State ────────────────────────────────────────────────────────────────
 
 const state = { lines: [], customFields: [] };
@@ -451,6 +522,7 @@ function render() {
   renderPreview();
   updateExportTextarea();
   document.getElementById('btn-add-line').disabled = state.lines.length >= 10;
+  renderCustomFieldsGroup();
 }
 
 function renderLines() {
@@ -1097,6 +1169,10 @@ function renderFieldHtml(field, data) {
 
   if (field.type === 'static') {
     return `<span style="${style}">${escapeHtml(field.text || '')}</span>`;
+  }
+
+  if (field.type === 'new_fields_indicator') {
+    return `<span style="${style}">● Neue Felder (Indikator)</span>`;
   }
 
   const raw = getNestedValue(data, field.key);
