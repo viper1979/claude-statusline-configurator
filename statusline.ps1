@@ -118,6 +118,97 @@ function Format-ProgressBar {
 
 <#
 .SYNOPSIS
+    Converts a total number of seconds into a human-readable duration string.
+.PARAMETER TotalSeconds
+    Non-negative integer number of seconds.
+.PARAMETER Format
+    'hours' → "75h 32m" | 'short' → "1d 4h 32m" | 'long' → "1d 4hr 32min"
+.OUTPUTS
+    Formatted duration string.
+#>
+function Format-Duration {
+    param(
+        [long]$TotalSeconds,
+        [string]$Format
+    )
+    if ($TotalSeconds -lt 0) { $TotalSeconds = 0 }
+    $totalMinutes = [long]($TotalSeconds / 60)
+    $hours        = [long]($totalMinutes / 60)
+    $minutes      = $totalMinutes % 60
+    $days         = [long]($hours / 24)
+    $remHours     = $hours % 24
+
+    switch ($Format) {
+        'hours' { return "${hours}h ${minutes}m" }
+        'long'  {
+            if ($days -gt 0) { return "${days}d ${remHours}hr ${minutes}min" }
+            return "${hours}hr ${minutes}min"
+        }
+        default { # 'short'
+            if ($days -gt 0) { return "${days}d ${remHours}h ${minutes}m" }
+            return "${hours}h ${minutes}m"
+        }
+    }
+}
+
+<#
+.SYNOPSIS
+    Formats a raw field value according to its configured data type and format.
+.PARAMETER Value
+    The raw value retrieved from the JSON payload.
+.PARAMETER DataType
+    One of: string | currency | bool | number | unix_timestamp | duration
+.PARAMETER Format
+    Format variant string matching the data type (e.g. 'k', 'short', 'checkmark').
+.PARAMETER FormatOptions
+    PSCustomObject with extra options. Used for bool custom format: trueLabel, falseLabel.
+.OUTPUTS
+    Formatted string ready for display.
+#>
+function Format-FieldValue {
+    param(
+        [object]$Value,
+        [string]$DataType,
+        [string]$Format,
+        [object]$FormatOptions
+    )
+
+    switch ($DataType) {
+        'unix_timestamp' {
+            if ($Format -eq 'raw') { return "$Value" }
+            $remaining    = [DateTimeOffset]::FromUnixTimeSeconds([long]$Value) - [DateTimeOffset]::UtcNow
+            $totalSeconds = [long]$remaining.TotalSeconds
+            return Format-Duration -TotalSeconds $totalSeconds -Format $Format
+        }
+        'duration' {
+            return Format-Duration -TotalSeconds ([long][double]$Value) -Format $Format
+        }
+        'number' {
+            switch ($Format) {
+                'k' { return "$([math]::Round([double]$Value / 1000))k" }
+                'm' { return "$([math]::Round([double]$Value / 1000000))m" }
+                default { return "$Value" }
+            }
+        }
+        'currency' {
+            $rounded = [math]::Round([double]$Value, 2)
+            return $rounded.ToString('0.00', [System.Globalization.CultureInfo]::InvariantCulture)
+        }
+        'bool' {
+            $b = [bool]$Value
+            switch ($Format) {
+                'yes_no'    { if ($b) { return 'yes' }    else { return 'no' } }
+                'checkmark' { if ($b) { return '✓' }      else { return '✗' } }
+                'custom'    { if ($b) { return $FormatOptions.trueLabel } else { return $FormatOptions.falseLabel } }
+                default     { if ($b) { return 'true' }   else { return 'false' } }
+            }
+        }
+        default { return "$Value" }
+    }
+}
+
+<#
+.SYNOPSIS
     Renders a single field configuration object as an ANSI-formatted string.
 .PARAMETER Field
     PSCustomObject with properties: type, key, text, fg, bg, progressStyle

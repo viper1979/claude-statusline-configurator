@@ -204,3 +204,103 @@ Describe 'Invoke-Main' {
         $result | Should -BeNullOrEmpty
     }
 }
+
+Describe 'Format-FieldValue' {
+    It 'returns raw string for string type' {
+        Format-FieldValue -Value 'claude-opus-4-6' -DataType 'string' -Format $null -FormatOptions $null |
+            Should -Be 'claude-opus-4-6'
+    }
+
+    It 'formats currency rounded to 2 decimal places' {
+        Format-FieldValue -Value 0.01234 -DataType 'currency' -Format $null -FormatOptions $null |
+            Should -Be '0.01'
+    }
+
+    It 'formats currency with exactly 2 decimal places even for whole number' {
+        Format-FieldValue -Value 5 -DataType 'currency' -Format $null -FormatOptions $null |
+            Should -Be '5.00'
+    }
+
+    It 'formats number with k suffix' {
+        Format-FieldValue -Value 12345 -DataType 'number' -Format 'k' -FormatOptions $null |
+            Should -Be '12k'
+    }
+
+    It 'formats number with m suffix' {
+        Format-FieldValue -Value 12000000 -DataType 'number' -Format 'm' -FormatOptions $null |
+            Should -Be '12m'
+    }
+
+    It 'formats number raw' {
+        Format-FieldValue -Value 42 -DataType 'number' -Format 'raw' -FormatOptions $null |
+            Should -Be '42'
+    }
+
+    It 'formats bool true as true_false' {
+        Format-FieldValue -Value $true -DataType 'bool' -Format 'true_false' -FormatOptions $null |
+            Should -Be 'true'
+    }
+
+    It 'formats bool false as true_false' {
+        Format-FieldValue -Value $false -DataType 'bool' -Format 'true_false' -FormatOptions $null |
+            Should -Be 'false'
+    }
+
+    It 'formats bool as yes_no' {
+        Format-FieldValue -Value $true -DataType 'bool' -Format 'yes_no' -FormatOptions $null |
+            Should -Be 'yes'
+        Format-FieldValue -Value $false -DataType 'bool' -Format 'yes_no' -FormatOptions $null |
+            Should -Be 'no'
+    }
+
+    It 'formats bool as checkmark' {
+        Format-FieldValue -Value $true -DataType 'bool' -Format 'checkmark' -FormatOptions $null |
+            Should -Be '✓'
+        Format-FieldValue -Value $false -DataType 'bool' -Format 'checkmark' -FormatOptions $null |
+            Should -Be '✗'
+    }
+
+    It 'formats bool with custom labels' {
+        $opts = [PSCustomObject]@{ trueLabel = 'aktiv'; falseLabel = 'inaktiv' }
+        Format-FieldValue -Value $true  -DataType 'bool' -Format 'custom' -FormatOptions $opts | Should -Be 'aktiv'
+        Format-FieldValue -Value $false -DataType 'bool' -Format 'custom' -FormatOptions $opts | Should -Be 'inaktiv'
+    }
+
+    It 'formats duration 5000 seconds as hours format: 1h 23m' {
+        Format-FieldValue -Value 5000 -DataType 'duration' -Format 'hours' -FormatOptions $null |
+            Should -Be '1h 23m'
+    }
+
+    It 'formats duration 90061 seconds as short format with days: 1d 1h 1m' {
+        Format-FieldValue -Value 90061 -DataType 'duration' -Format 'short' -FormatOptions $null |
+            Should -Be '1d 1h 1m'
+    }
+
+    It 'formats duration 90061 seconds as long format with days: 1d 1hr 1min' {
+        Format-FieldValue -Value 90061 -DataType 'duration' -Format 'long' -FormatOptions $null |
+            Should -Be '1d 1hr 1min'
+    }
+
+    It 'formats duration under 1 day as short without day prefix' {
+        # 3661 seconds = 1h 1m
+        Format-FieldValue -Value 3661 -DataType 'duration' -Format 'short' -FormatOptions $null |
+            Should -Be '1h 1m'
+    }
+
+    It 'formats unix_timestamp as raw string' {
+        Format-FieldValue -Value 1738857600 -DataType 'unix_timestamp' -Format 'raw' -FormatOptions $null |
+            Should -Be '1738857600'
+    }
+
+    It 'formats unix_timestamp hours format as a time string matching pattern' {
+        # Use a timestamp 2 hours and 5 minutes in the future
+        $futureTs = [DateTimeOffset]::UtcNow.AddHours(2).AddMinutes(5).ToUnixTimeSeconds()
+        $result = Format-FieldValue -Value $futureTs -DataType 'unix_timestamp' -Format 'hours' -FormatOptions $null
+        $result | Should -Match '^\d+h \d+m$'
+    }
+
+    It 'returns raw string for unknown data type' {
+        Format-FieldValue -Value 'anything' -DataType 'unknown_type' -Format $null -FormatOptions $null |
+            Should -Be 'anything'
+    }
+}
