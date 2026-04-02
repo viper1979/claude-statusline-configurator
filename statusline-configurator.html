@@ -406,6 +406,37 @@ function renderFieldsPanel() {
     tree.appendChild(header);
     tree.appendChild(itemList);
   }
+
+  // Diagnose group — virtual fields for diagnostics
+  const diagHeader = document.createElement('div');
+  diagHeader.style.cssText = 'font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:var(--color-text-muted);padding:8px 4px 4px;cursor:pointer;user-select:none;display:flex;align-items:center;gap:4px;';
+  diagHeader.innerHTML = '<span class="group-arrow" style="display:inline-block;transition:transform 0.15s;">▶</span> Diagnose';
+
+  const diagList = document.createElement('div');
+  diagList.className = 'field-group-list';
+  diagList.style.cssText = 'display:none;';
+
+  diagHeader.addEventListener('click', () => {
+    const isOpen = diagList.style.display !== 'none';
+    diagList.style.display = isOpen ? 'none' : 'block';
+    diagHeader.querySelector('.group-arrow').style.transform = isOpen ? '' : 'rotate(90deg)';
+  });
+
+  const diagItem = document.createElement('div');
+  diagItem.className = 'field-source';
+  diagItem.dataset.fieldType = 'new_fields_indicator';
+  diagItem.style.cssText = 'padding:5px 8px;border-radius:4px;font-size:12px;cursor:grab;display:flex;align-items:center;gap:6px;transition:background 0.1s;';
+  diagItem.innerHTML = `
+    <span style="color:var(--color-text-muted);font-size:10px;">⠿</span>
+    <span>Neue Felder</span>
+    <span style="font-size:9px;color:var(--color-accent);margin-left:auto;border:1px solid var(--color-accent);border-radius:3px;padding:1px 4px;">●</span>
+  `;
+  diagItem.addEventListener('mouseenter', () => diagItem.style.background = 'var(--color-surface-2)');
+  diagItem.addEventListener('mouseleave', () => diagItem.style.background = '');
+  diagList.appendChild(diagItem);
+
+  tree.appendChild(diagHeader);
+  tree.appendChild(diagList);
 }
 
 // Initialize panel immediately
@@ -817,6 +848,8 @@ function loadConfig(json) {
     fg:    cf.fg    || null,
     bg:    cf.bg    || null,
   }));
+
+  // knownKeys: not stored in state — rebuilt on every export from AVAILABLE_FIELDS
 
   render();
 }
