@@ -101,9 +101,13 @@ $script:PbColorHigh = '#f87171'   # red    — 80–100%
 .PARAMETER Value
     Numeric percentage (0–100). Values outside range are clamped.
 .PARAMETER Style
-    'block' | 'slim' | 'color-coded'
+    'normal' | 'color-coded'. Controls color behavior only.
 .PARAMETER Fg
     Override foreground hex color (#rrggbb), or $null to use threshold color (color-coded only).
+.PARAMETER Brackets
+    Whether to wrap the bar in [ ]. Default: $true.
+.PARAMETER Charset
+    Character pair to use: 'block' (▓░) | 'solid' (█░) | 'circle' (●○) | 'square' (■□) | 'ascii' (#-).
 .OUTPUTS
     ANSI-formatted string ready for stdout.
 #>
@@ -111,11 +115,25 @@ function Format-ProgressBar {
     param(
         [double]$Value,
         [string]$Style,
-        [string]$Fg
+        [string]$Fg,
+        [bool]$Brackets = $true,
+        [string]$Charset = 'block'
     )
     $pct    = [Math]::Min(100, [Math]::Max(0, $Value))
     $filled = [int][Math]::Round($pct / 10)
     $empty  = 10 - $filled
+
+    # Character sets for filled/empty segments
+    $charMap = @{
+        'block'  = @('▓', '░')
+        'solid'  = @('█', '░')
+        'circle' = @('●', '○')
+        'square' = @('■', '□')
+        'ascii'  = @('#', '-')
+    }
+    $chars    = if ($charMap.ContainsKey($Charset)) { $charMap[$Charset] } else { $charMap['block'] }
+    $fillStr  = $chars[0] * $filled
+    $emptyStr = $chars[1] * $empty
 
     # Color: use Fg override if provided; otherwise apply threshold only for color-coded
     $color = if ($Fg) {
@@ -128,11 +146,8 @@ function Format-ProgressBar {
         $null
     }
 
-    $bar = if ($Style -eq 'slim') {
-        ('█' * $filled) + ('░' * $empty) + ' ' + [int]$pct + '%'
-    } else {
-        '[' + ('▓' * $filled) + ('░' * $empty) + '] ' + [int]$pct + '%'
-    }
+    $inner = "${fillStr}${emptyStr}"
+    $bar   = if ($Brackets) { "[${inner}] $([int]$pct)%" } else { "${inner} $([int]$pct)%" }
 
     if ($color) {
         return (ConvertTo-AnsiFg $color) + $bar + $script:AnsiReset
@@ -265,7 +280,24 @@ function Format-Field {
             if ($Field.progressStyle -eq 'raw') {
                 return "${fgAnsi}${bgAnsi}${value}${resetAnsi}"
             }
-            $bar = Format-ProgressBar -Value ([double]$value) -Style ($Field.progressStyle ?? 'color-coded') -Fg $Field.fg
+
+            # Resolve effective style, brackets and charset.
+            # Supports old single-field schema ('block'/'slim') and new decomposed schema.
+            $effectiveStyle    = 'color-coded'
+            $effectiveBrackets = $true
+            $effectiveCharset  = 'block'
+            switch ($Field.progressStyle) {
+                'block'  { $effectiveStyle = 'normal' }   # old value — brackets+block implied
+                'slim'   { $effectiveStyle = 'normal'; $effectiveBrackets = $false; $effectiveCharset = 'solid' }
+                'normal' { $effectiveStyle = 'normal' }
+                default  { $effectiveStyle = 'color-coded' }
+            }
+            # New decomposed fields take precedence over style-derived defaults
+            if ($null -ne $Field.barBrackets) { $effectiveBrackets = [bool]$Field.barBrackets }
+            if ($Field.barCharset)            { $effectiveCharset  = $Field.barCharset }
+
+            $bar = Format-ProgressBar -Value ([double]$value) -Style $effectiveStyle -Fg $Field.fg `
+                                       -Brackets $effectiveBrackets -Charset $effectiveCharset
             if ($Field.bg) { return "${bgAnsi}${bar}${script:AnsiReset}" }
             return $bar
         }

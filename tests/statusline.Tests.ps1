@@ -34,16 +34,28 @@ Describe 'Get-NestedValue' {
 }
 
 Describe 'Format-ProgressBar' {
-    It 'renders block style with brackets' {
-        $result = Format-ProgressBar -Value 30 -Style 'block' -Fg $null
+    It 'renders with brackets by default' {
+        $result = Format-ProgressBar -Value 30 -Style 'normal' -Fg $null
         $result | Should -Match '\['
         $result | Should -Match '30%'
     }
 
-    It 'renders slim style without brackets' {
-        $result = Format-ProgressBar -Value 30 -Style 'slim' -Fg $null
+    It 'renders without brackets when Brackets is false' {
+        $result = Format-ProgressBar -Value 30 -Style 'normal' -Fg $null -Brackets $false
         $result | Should -Not -Match '\['
         $result | Should -Match '30%'
+    }
+
+    It 'renders circle charset' {
+        $result = Format-ProgressBar -Value 50 -Style 'normal' -Fg $null -Charset 'circle'
+        $result | Should -Match '●'
+        $result | Should -Match '○'
+    }
+
+    It 'renders ascii charset' {
+        $result = Format-ProgressBar -Value 50 -Style 'normal' -Fg $null -Charset 'ascii'
+        $result | Should -Match '#'
+        $result | Should -Match '-'
     }
 
     It 'uses green ANSI for value below 50 in color-coded style' {
@@ -129,6 +141,28 @@ Describe 'Format-Field' {
         $result | Should -Match '45'
         $result | Should -Not -Match '\['
         $result | Should -Not -Match '%'
+    }
+
+    It 'renders progressbar without brackets when barBrackets is false' {
+        $field = [PSCustomObject]@{ type='progressbar'; key='context_window.used_percentage'; progressStyle='normal'; barBrackets=$false; barCharset='block'; fg=$null; bg=$null }
+        $result = Format-Field $field $sampleData
+        $result | Should -Match '45%'
+        $result | Should -Not -Match '\['
+    }
+
+    It 'renders progressbar with circle charset' {
+        $field = [PSCustomObject]@{ type='progressbar'; key='context_window.used_percentage'; progressStyle='normal'; barBrackets=$true; barCharset='circle'; fg=$null; bg=$null }
+        $result = Format-Field $field $sampleData
+        $result | Should -Match '●'
+        $result | Should -Match '○'
+    }
+
+    It 'renders progressbar with ascii charset and no brackets' {
+        $field = [PSCustomObject]@{ type='progressbar'; key='context_window.used_percentage'; progressStyle='normal'; barBrackets=$false; barCharset='ascii'; fg=$null; bg=$null }
+        $result = Format-Field $field $sampleData
+        $result | Should -Match '#'
+        $result | Should -Match '-'
+        $result | Should -Not -Match '\['
     }
 
     It 'returns empty string for unknown field path' {

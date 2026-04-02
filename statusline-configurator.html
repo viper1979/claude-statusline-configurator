@@ -685,7 +685,7 @@ function initSortable() {
           const isPercentage = PERCENTAGE_KEYS.has(panelFieldKey);
           const defaults = FIELD_TYPE_DEFAULTS[panelFieldKey] || {};
           newField = isPercentage
-            ? { id: generateId(), type: 'progressbar', key: panelFieldKey, progressStyle: 'color-coded', fg: null, bg: null }
+            ? { id: generateId(), type: 'progressbar', key: panelFieldKey, progressStyle: 'color-coded', barBrackets: true, barCharset: 'block', fg: null, bg: null }
             : { id: generateId(), type: 'field', key: panelFieldKey, ...defaults, fg: null, bg: null };
           _draggedField = null;
         } else {
@@ -834,7 +834,22 @@ function loadConfig(json) {
       text:          f.text          || '',
       fg:            f.fg            || null,
       bg:            f.bg            || null,
-      progressStyle: f.progressStyle || 'color-coded',
+      progressStyle: (() => {
+        // Migrate old single-value styles to new schema
+        const s = f.progressStyle || 'color-coded';
+        if (s === 'block' || s === 'slim') return 'normal';
+        return s;
+      })(),
+      barBrackets: (() => {
+        if (f.barBrackets !== undefined) return f.barBrackets;
+        // Migrate: 'slim' had no brackets; everything else had brackets
+        return f.progressStyle !== 'slim';
+      })(),
+      barCharset: (() => {
+        if (f.barCharset) return f.barCharset;
+        // Migrate: 'slim' used solid chars; everything else used block
+        return f.progressStyle === 'slim' ? 'solid' : 'block';
+      })(),
       dataType:      f.dataType      || null,
       format:        f.format        || null,
       formatOptions: f.formatOptions || null,
@@ -957,22 +972,51 @@ function renderEditTabGeneral() {
       </div>
     `;
   } else if (f.type === 'progressbar') {
-    const styles = [
-      ['block',       '[▓▓▓▓░░░░] 23%',  'Block'],
-      ['slim',        '████░░░░ 23%',    'Slim'],
-      ['color-coded', '[▓▓▓░░░░░] 23%',  'Farbkodiert (grün/gelb/rot)'],
-      ['raw',         '23',              'Rohwert (nur Zahl)'],
+    const curStyle    = f.progressStyle || 'color-coded';
+    const curBrackets = f.barBrackets !== false;
+    const curCharset  = f.barCharset || 'block';
+    // Migrate old single-value styles for display
+    const displayStyle = (curStyle === 'block' || curStyle === 'slim') ? 'normal' : curStyle;
+    const charsets = [
+      ['block',  '▓░', 'Block'],
+      ['solid',  '█░', 'Voll'],
+      ['circle', '●○', 'Kreis'],
+      ['square', '■□', 'Quadrat'],
+      ['ascii',  '#-', 'ASCII'],
     ];
     el.innerHTML = `
-      <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:8px;">Progress Bar Stil</div>
-      ${styles.map(([val, ex, lbl]) => `
-        <label style="display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:6px;cursor:pointer;">
-          <input type="radio" name="edit-pb-style" value="${val}"
-                 ${(f.progressStyle || 'color-coded') === val ? 'checked' : ''}>
-          <code style="font-size:11px;color:var(--color-text-muted);">${ex}</code>
-          <span>${lbl}</span>
+      <div style="margin-bottom:10px;">
+        <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:6px;">Farbe</div>
+        <label style="display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:4px;cursor:pointer;">
+          <input type="radio" name="edit-pb-style" value="color-coded" ${displayStyle === 'color-coded' ? 'checked' : ''}>
+          <span>Farbkodiert (grün/gelb/rot)</span>
         </label>
-      `).join('')}
+        <label style="display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:4px;cursor:pointer;">
+          <input type="radio" name="edit-pb-style" value="normal" ${displayStyle === 'normal' ? 'checked' : ''}>
+          <span>Einheitliche Farbe</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;">
+          <input type="radio" name="edit-pb-style" value="raw" ${curStyle === 'raw' ? 'checked' : ''}>
+          <span>Rohwert (nur Zahl)</span>
+        </label>
+      </div>
+      <div style="margin-bottom:10px;">
+        <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:6px;">Klammern</div>
+        <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;">
+          <input type="checkbox" id="edit-pb-brackets" ${curBrackets ? 'checked' : ''}>
+          <span>[ ] Klammern anzeigen</span>
+        </label>
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:6px;">Zeichen</div>
+        ${charsets.map(([val, ex, lbl]) => `
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:4px;cursor:pointer;">
+            <input type="radio" name="edit-pb-charset" value="${val}" ${curCharset === val ? 'checked' : ''}>
+            <code style="font-size:11px;color:var(--color-text-muted);letter-spacing:2px;">${ex}</code>
+            <span>${lbl}</span>
+          </label>
+        `).join('')}
+      </div>
     `;
   } else if (f.type === 'new_fields_indicator') {
     el.innerHTML = `
@@ -1134,6 +1178,10 @@ function saveEditDialog() {
   if (labelEl) _editDraft.label = labelEl.value;
   if (textEl)  _editDraft.text  = textEl.value;
   if (pbRadio) _editDraft.progressStyle = pbRadio.value;
+  const pbCharsetRadio = document.querySelector('[name="edit-pb-charset"]:checked');
+  const pbBracketsEl   = document.getElementById('edit-pb-brackets');
+  if (pbCharsetRadio)       _editDraft.barCharset  = pbCharsetRadio.value;
+  if (pbBracketsEl !== null) _editDraft.barBrackets = pbBracketsEl.checked;
 
   // Read Datentyp tab values into draft (only when tab is visible)
   const typeEl = document.getElementById('edit-datatype');
@@ -1184,27 +1232,35 @@ function saveEditDialog() {
 // Color thresholds (global, matches PowerShell script)
 const PB_COLORS = { low: '#4ade80', mid: '#facc15', high: '#f87171' };
 
+// Character sets for filled/empty segments — mirrors PS charMap in Format-ProgressBar
+const PB_CHARSETS = {
+  block:  ['▓', '░'],
+  solid:  ['█', '░'],
+  circle: ['●', '○'],
+  square: ['■', '□'],
+  ascii:  ['#', '-'],
+};
+
 /**
  * Returns { bar: string, color: string } for a progress bar.
- * @param {number} value   - 0 to 100
- * @param {string} style   - 'block' | 'slim' | 'color-coded'
- * @param {string|null} fg - override color (#rrggbb) or null
+ * @param {number}      value   - 0 to 100
+ * @param {string}      style   - 'normal' | 'color-coded'
+ * @param {string|null} fg      - override color (#rrggbb) or null
+ * @param {boolean}     brackets - whether to wrap the bar in [ ]
+ * @param {string}      charset  - key from PB_CHARSETS
  */
-function makeProgressBar(value, style, fg) {
-  const pct = Math.min(100, Math.max(0, value || 0));
-  const filled = Math.round(pct / 10);   // 10 segments
+function makeProgressBar(value, style, fg, brackets = true, charset = 'block') {
+  const pct    = Math.min(100, Math.max(0, value || 0));
+  const filled = Math.round(pct / 10);
   const empty  = 10 - filled;
+
+  const [fillCh, emptyCh] = PB_CHARSETS[charset] || PB_CHARSETS.block;
 
   const thresholdColor = pct < 50 ? PB_COLORS.low : pct < 80 ? PB_COLORS.mid : PB_COLORS.high;
   const color = fg ?? (style === 'color-coded' ? thresholdColor : null);
 
-  let bar;
-  if (style === 'slim') {
-    bar = '█'.repeat(filled) + '░'.repeat(empty) + ' ' + Math.round(pct) + '%';
-  } else {
-    // 'block' and 'color-coded' use the same bracket format
-    bar = '[' + '▓'.repeat(filled) + '░'.repeat(empty) + '] ' + Math.round(pct) + '%';
-  }
+  const inner = fillCh.repeat(filled) + emptyCh.repeat(empty);
+  const bar   = brackets ? `[${inner}] ${Math.round(pct)}%` : `${inner} ${Math.round(pct)}%`;
 
   return { bar, color };
 }
@@ -1292,7 +1348,9 @@ function renderFieldHtml(field, data) {
     if (field.progressStyle === 'raw') {
       return `<span style="${style}">${escapeHtml(String(raw))}</span>`;
     }
-    const { bar, color } = makeProgressBar(raw, field.progressStyle || 'color-coded', fg);
+    const brackets = field.barBrackets !== false; // default true
+    const charset  = field.barCharset || 'block';
+    const { bar, color } = makeProgressBar(raw, field.progressStyle || 'color-coded', fg, brackets, charset);
     const colorStyle = color ? `color:${color};` : '';
     const finalStyle = [colorStyle, bg ? `background:${bg};padding:1px 3px;border-radius:3px;` : ''].join('');
     return `<span style="${finalStyle}">${bar}</span>`;
