@@ -836,11 +836,247 @@ function switchEditTab(tab) {
   else if (tab === 'colors')   renderEditTabColors();
 }
 
-// Stubs — filled in Task 6
-function renderEditTabGeneral()  { document.getElementById('edit-tab-general').textContent  = 'Allgemein (kommt noch)'; }
-function renderEditTabDatatype() { document.getElementById('edit-tab-datatype').textContent = 'Datentyp (kommt noch)'; }
-function renderEditTabColors()   { document.getElementById('edit-tab-colors').textContent   = 'Farben (kommt noch)'; }
-function saveEditDialog()        { closeEditDialog(); }
+function renderEditTabGeneral() {
+  const el = document.getElementById('edit-tab-general');
+  const f  = _editDraft;
+  if (!f) return;
+
+  if (f.type === 'static' || _editCtx.source === 'palette' || _editCtx.source === 'palette-new') {
+    // Editable: label (for palette) + text
+    const showLabel = _editCtx.source !== 'line';
+    el.innerHTML = `
+      ${showLabel ? `
+      <div style="margin-bottom:10px;">
+        <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:4px;">Name in der Palette</div>
+        <input id="edit-label" type="text" value="${escapeHtml(f.label || '')}"
+               style="width:100%;box-sizing:border-box;padding:6px 8px;border-radius:4px;
+                      border:1px solid var(--color-border);background:var(--color-surface-2);
+                      color:var(--color-text);font-size:12px;">
+      </div>` : ''}
+      <div>
+        <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:4px;">Text</div>
+        <input id="edit-text" type="text" value="${escapeHtml(f.text || '')}"
+               style="width:100%;box-sizing:border-box;padding:6px 8px;border-radius:4px;
+                      border:1px solid var(--color-border);background:var(--color-surface-2);
+                      color:var(--color-text);font-size:12px;">
+      </div>
+    `;
+  } else if (f.type === 'progressbar') {
+    const styles = [
+      ['block',       '[▓▓▓▓░░░░] 23%',  'Block'],
+      ['slim',        '████░░░░ 23%',    'Slim'],
+      ['color-coded', '[▓▓▓░░░░░] 23%',  'Farbkodiert (grün/gelb/rot)'],
+    ];
+    el.innerHTML = `
+      <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:8px;">Progress Bar Stil</div>
+      ${styles.map(([val, ex, lbl]) => `
+        <label style="display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:6px;cursor:pointer;">
+          <input type="radio" name="edit-pb-style" value="${val}"
+                 ${(f.progressStyle || 'color-coded') === val ? 'checked' : ''}>
+          <code style="font-size:11px;color:var(--color-text-muted);">${ex}</code>
+          <span>${lbl}</span>
+        </label>
+      `).join('')}
+    `;
+  } else if (f.type === 'new_fields_indicator') {
+    el.innerHTML = `
+      <p style="font-size:12px;color:var(--color-text-muted);line-height:1.5;">
+        Zeigt an, ob der aktuelle JSON-Payload Keys enthält, die dem Konfigurator noch unbekannt sind.<br>
+        Beispielausgabe: <code>● 3 neue Felder</code>
+      </p>
+    `;
+  } else {
+    // type === 'field' — key is read-only
+    el.innerHTML = `
+      <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:4px;">Key</div>
+      <div style="padding:6px 8px;border-radius:4px;border:1px solid var(--color-border);
+                  background:var(--color-surface-2);font-size:12px;color:var(--color-text-muted);">
+        ${escapeHtml(f.key || '')}
+      </div>
+    `;
+  }
+}
+
+// Format options per data type — used in renderEditTabDatatype
+const DATATYPE_FORMATS = {
+  string:         [],
+  currency:       [],
+  bool:           [['true_false','true / false'],['yes_no','yes / no'],['checkmark','✓ / ✗'],['custom','Benutzerdefiniert']],
+  number:         [['raw','Rohwert (12345678)'],['k','Tausend (12346k)'],['m','Millionen (12m)']],
+  unix_timestamp: [['hours','Stunden (75h 32m)'],['short','Kurz (1d 4h 32m)'],['long','Lang (1d 4hr 32min)'],['raw','Rohwert']],
+  duration:       [['hours','Stunden (75h 32m)'],['short','Kurz (1d 4h 32m)'],['long','Lang (1d 4hr 32min)']],
+};
+
+function renderEditTabDatatype() {
+  const el = document.getElementById('edit-tab-datatype');
+  const f  = _editDraft;
+  if (!f) return;
+
+  const currentType   = f.dataType || 'string';
+  const currentFormat = f.format   || '';
+  const formats       = DATATYPE_FORMATS[currentType] || [];
+
+  el.innerHTML = `
+    <div style="margin-bottom:12px;">
+      <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:4px;">Datentyp</div>
+      <select id="edit-datatype"
+              style="width:100%;padding:6px 8px;border-radius:4px;border:1px solid var(--color-border);
+                     background:var(--color-surface-2);color:var(--color-text);font-size:12px;">
+        ${Object.keys(DATATYPE_FORMATS).map(t =>
+          `<option value="${t}" ${t === currentType ? 'selected' : ''}>${t}</option>`
+        ).join('')}
+      </select>
+    </div>
+    <div id="edit-format-section">
+      ${renderFormatOptions(formats, currentFormat, currentType)}
+    </div>
+  `;
+
+  document.getElementById('edit-datatype').addEventListener('change', (e) => {
+    const newType    = e.target.value;
+    const newFormats = DATATYPE_FORMATS[newType] || [];
+    document.getElementById('edit-format-section').innerHTML =
+      renderFormatOptions(newFormats, '', newType);
+    if (newType === 'bool') wireBoolCustomLabels();
+  });
+
+  if (currentType === 'bool') wireBoolCustomLabels();
+}
+
+// Renders the format radio-button options for a given data type.
+// Returns an HTML string — caller sets it via innerHTML.
+function renderFormatOptions(formats, currentFormat, dataType) {
+  if (formats.length === 0) {
+    return '<div style="font-size:12px;color:var(--color-text-muted);">Keine Format-Optionen verfügbar.</div>';
+  }
+  const opts = formats.map(([val, lbl]) => `
+    <label style="display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:5px;cursor:pointer;">
+      <input type="radio" name="edit-format" value="${val}"
+             ${(!currentFormat && formats[0][0] === val) || currentFormat === val ? 'checked' : ''}>
+      <span>${lbl}</span>
+    </label>
+  `).join('');
+
+  const customSection = dataType === 'bool' ? `
+    <div id="edit-custom-labels" style="display:none;margin-top:8px;padding-left:20px;">
+      <div style="margin-bottom:6px;">
+        <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:3px;">True-Label</div>
+        <input id="edit-true-label" type="text"
+               value="${escapeHtml(_editDraft?.formatOptions?.trueLabel || '')}"
+               style="width:100%;box-sizing:border-box;padding:5px 8px;border-radius:4px;
+                      border:1px solid var(--color-border);background:var(--color-surface-2);
+                      color:var(--color-text);font-size:12px;">
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:3px;">False-Label</div>
+        <input id="edit-false-label" type="text"
+               value="${escapeHtml(_editDraft?.formatOptions?.falseLabel || '')}"
+               style="width:100%;box-sizing:border-box;padding:5px 8px;border-radius:4px;
+                      border:1px solid var(--color-border);background:var(--color-surface-2);
+                      color:var(--color-text);font-size:12px;">
+      </div>
+    </div>
+  ` : '';
+
+  return `
+    <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:6px;">Format</div>
+    ${opts}
+    ${customSection}
+  `;
+}
+
+// Wires show/hide of bool custom-label inputs.
+// Must be called AFTER innerHTML is set (script tags inside innerHTML don't execute).
+function wireBoolCustomLabels() {
+  function toggle() {
+    const checked = document.querySelector('[name="edit-format"]:checked');
+    const sec = document.getElementById('edit-custom-labels');
+    if (sec) sec.style.display = checked?.value === 'custom' ? '' : 'none';
+  }
+  document.querySelectorAll('[name="edit-format"]').forEach(r => r.addEventListener('change', toggle));
+  toggle();
+}
+
+function renderEditTabColors() {
+  const el = document.getElementById('edit-tab-colors');
+  const f  = _editDraft;
+  if (!f) return;
+
+  const fg = f.fg || '';
+  const bg = f.bg || '';
+
+  el.innerHTML = `
+    <div style="margin-bottom:12px;">
+      <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:6px;">Vordergrundfarbe</div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <input type="color" id="edit-fg" value="${fg || '#e0e0e0'}" style="cursor:pointer;">
+        <label style="font-size:12px;cursor:pointer;display:flex;align-items:center;gap:4px;">
+          <input type="checkbox" id="edit-fg-none" ${!fg ? 'checked' : ''}> Keine Farbe
+        </label>
+      </div>
+    </div>
+    <div>
+      <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:6px;">Hintergrundfarbe</div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <input type="color" id="edit-bg" value="${bg || '#333333'}" style="cursor:pointer;">
+        <label style="font-size:12px;cursor:pointer;display:flex;align-items:center;gap:4px;">
+          <input type="checkbox" id="edit-bg-none" ${!bg ? 'checked' : ''}> Keine Farbe
+        </label>
+      </div>
+    </div>
+  `;
+}
+
+function saveEditDialog() {
+  if (!_editCtx || !_editDraft) return;
+  const { source, lineId } = _editCtx;
+
+  // Read Allgemein tab values into draft
+  const labelEl  = document.getElementById('edit-label');
+  const textEl   = document.getElementById('edit-text');
+  const pbRadio  = document.querySelector('[name="edit-pb-style"]:checked');
+  if (labelEl) _editDraft.label = labelEl.value;
+  if (textEl)  _editDraft.text  = textEl.value;
+  if (pbRadio) _editDraft.progressStyle = pbRadio.value;
+
+  // Read Datentyp tab values into draft (only when tab is visible)
+  const typeEl = document.getElementById('edit-datatype');
+  if (typeEl) {
+    _editDraft.dataType = typeEl.value;
+    const fmtRadio = document.querySelector('[name="edit-format"]:checked');
+    _editDraft.format = fmtRadio ? fmtRadio.value : null;
+    if (_editDraft.dataType === 'bool' && _editDraft.format === 'custom') {
+      _editDraft.formatOptions = {
+        trueLabel:  document.getElementById('edit-true-label')?.value  || '',
+        falseLabel: document.getElementById('edit-false-label')?.value || '',
+      };
+    } else {
+      _editDraft.formatOptions = null;
+    }
+  }
+
+  // Read Farben tab values into draft
+  const fgNone = document.getElementById('edit-fg-none')?.checked;
+  const bgNone = document.getElementById('edit-bg-none')?.checked;
+  _editDraft.fg = fgNone ? null : (document.getElementById('edit-fg')?.value || null);
+  _editDraft.bg = bgNone ? null : (document.getElementById('edit-bg')?.value || null);
+
+  // Apply draft to actual state
+  if (source === 'line') {
+    const line = state.lines.find(l => l.id === lineId);
+    if (!line) { closeEditDialog(); return; }
+    const idx = line.fields.findIndex(f => f.id === _editDraft.id);
+    if (idx !== -1) Object.assign(line.fields[idx], _editDraft);
+  } else if (source === 'palette') {
+    const idx = state.customFields.findIndex(f => f.id === _editDraft.id);
+    if (idx !== -1) Object.assign(state.customFields[idx], _editDraft);
+  } else if (source === 'palette-new') {
+    state.customFields.push(_editDraft);
+  }
+
+  closeEditDialog();
+  render();
+}
 
 function openStylePopup(lineId, fieldId) {
   const line = state.lines.find(l => l.id === lineId);
