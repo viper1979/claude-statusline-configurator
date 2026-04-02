@@ -275,6 +275,41 @@ const PERCENTAGE_KEYS = new Set([
   'rate_limits.seven_day.used_percentage',
 ]);
 
+// Default data type for each known field key.
+// When a field is dragged from the palette, this mapping is applied automatically.
+// The user can override the dataType/format in the Edit Dialog.
+const FIELD_TYPE_DEFAULTS = {
+  // Model
+  'model.display_name':                      { dataType: 'string' },
+  'model.id':                                { dataType: 'string' },
+  // Cost
+  'cost.total_cost_usd':                     { dataType: 'currency' },
+  'cost.total_duration_ms':                  { dataType: 'duration',       format: 'short' },
+  'cost.total_lines_added':                  { dataType: 'number',         format: 'raw' },
+  'cost.total_lines_removed':                { dataType: 'number',         format: 'raw' },
+  // Context Window
+  'context_window.used_percentage':          { dataType: 'number',         format: 'raw' },
+  'context_window.remaining_percentage':     { dataType: 'number',         format: 'raw' },
+  'context_window.total_input_tokens':       { dataType: 'number',         format: 'k' },
+  'context_window.total_output_tokens':      { dataType: 'number',         format: 'k' },
+  'context_window.context_window_size':      { dataType: 'number',         format: 'k' },
+  // Rate Limits
+  'rate_limits.five_hour.used_percentage':   { dataType: 'number',         format: 'raw' },
+  'rate_limits.seven_day.used_percentage':   { dataType: 'number',         format: 'raw' },
+  // Workspace / Session
+  'workspace.current_dir':                   { dataType: 'string' },
+  'workspace.project_dir':                   { dataType: 'string' },
+  'cwd':                                     { dataType: 'string' },
+  'version':                                 { dataType: 'string' },
+  'session_id':                              { dataType: 'string' },
+  'agent.name':                              { dataType: 'string' },
+  'vim.mode':                                { dataType: 'string' },
+  // Worktree
+  'worktree.name':                           { dataType: 'string' },
+  'worktree.branch':                         { dataType: 'string' },
+  'worktree.original_branch':                { dataType: 'string' },
+};
+
 // Sample data shown in preview
 const SAMPLE_DATA = {
   cwd: '/home/user/myproject',
@@ -354,7 +389,7 @@ renderFieldsPanel();
 
 // ─── State ────────────────────────────────────────────────────────────────
 
-const state = { lines: [] };
+const state = { lines: [], customFields: [] };
 
 // ─── Line management ──────────────────────────────────────────────────────
 
@@ -505,17 +540,28 @@ function initSortable() {
       ghostClass: 'sortable-ghost',
       draggable: '.field-chip',
       onAdd(evt) {
-        // Capture fieldKey before removing the item from DOM
-        const panelFieldKey = evt.item?.dataset?.fieldKey;
+        const panelFieldType     = evt.item?.dataset?.fieldType;
+        const panelCustomFieldId = evt.item?.dataset?.customFieldId;
+        const panelFieldKey      = evt.item?.dataset?.fieldKey;
         evt.item.remove();
         let newField;
-        if (panelFieldKey) {
-          // Left-panel clone → create a new field object
-          const fieldKey = panelFieldKey;
-          const isPercentage = PERCENTAGE_KEYS.has(fieldKey);
+        if (panelFieldType === 'new_fields_indicator') {
+          // Diagnose palette item
+          newField = { id: generateId(), type: 'new_fields_indicator', fg: null, bg: null };
+          _draggedField = null;
+        } else if (panelCustomFieldId) {
+          // Custom-field clone from "Eigene Felder" palette → independent static copy
+          const cf = state.customFields.find(f => f.id === panelCustomFieldId);
+          if (!cf) return;
+          newField = { id: generateId(), type: 'static', text: cf.text, fg: cf.fg, bg: cf.bg };
+          _draggedField = null;
+        } else if (panelFieldKey) {
+          // Left-panel known field clone → apply FIELD_TYPE_DEFAULTS automatically
+          const isPercentage = PERCENTAGE_KEYS.has(panelFieldKey);
+          const defaults = FIELD_TYPE_DEFAULTS[panelFieldKey] || {};
           newField = isPercentage
-            ? { id: generateId(), type: 'progressbar', key: fieldKey, progressStyle: 'color-coded', fg: null, bg: null }
-            : { id: generateId(), type: 'field', key: fieldKey, fg: null, bg: null };
+            ? { id: generateId(), type: 'progressbar', key: panelFieldKey, progressStyle: 'color-coded', fg: null, bg: null }
+            : { id: generateId(), type: 'field', key: panelFieldKey, fg: null, bg: null, ...defaults };
           _draggedField = null;
         } else {
           // Zone-to-zone chip move → use the field buffered by onRemove
@@ -575,11 +621,23 @@ function buildExportJson() {
       if (f.text != null)  base.text = f.text;
       if (f.fg)            base.fg = f.fg;
       if (f.bg)            base.bg = f.bg;
-      if (f.progressStyle) base.progressStyle = f.progressStyle;
+      if (f.progressStyle && f.type === 'progressbar') base.progressStyle = f.progressStyle;
+      if (f.dataType)      base.dataType = f.dataType;
+      if (f.format)        base.format = f.format;
+      if (f.formatOptions) base.formatOptions = f.formatOptions;
       return base;
     }),
   }));
-  return JSON.stringify({ lines }, null, 2);
+
+  const customFields = state.customFields.map(cf => ({
+    id: cf.id, label: cf.label, text: cf.text,
+    fg: cf.fg || null, bg: cf.bg || null,
+  }));
+
+  // All keys from AVAILABLE_FIELDS — used by PS for new_fields_indicator
+  const knownKeys = AVAILABLE_FIELDS.flatMap(g => g.items.map(i => i.key));
+
+  return JSON.stringify({ lines, customFields, knownKeys }, null, 2);
 }
 
 function updateExportTextarea() {
@@ -646,13 +704,24 @@ function loadConfig(json) {
     id:     generateId(),
     fields: (line.fields || []).map(f => ({
       id:            generateId(),
-      type:          f.type || 'field',
-      key:           f.key  || null,
-      text:          f.text || '',
-      fg:            f.fg   || null,
-      bg:            f.bg   || null,
+      type:          f.type          || 'field',
+      key:           f.key           || null,
+      text:          f.text          || '',
+      fg:            f.fg            || null,
+      bg:            f.bg            || null,
       progressStyle: f.progressStyle || 'color-coded',
+      dataType:      f.dataType      || null,
+      format:        f.format        || null,
+      formatOptions: f.formatOptions || null,
     })),
+  }));
+
+  state.customFields = (json.customFields || []).map(cf => ({
+    id:    cf.id    || generateId(),
+    label: cf.label || '',
+    text:  cf.text  || '',
+    fg:    cf.fg    || null,
+    bg:    cf.bg    || null,
   }));
 
   render();
