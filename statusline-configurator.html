@@ -418,8 +418,11 @@ renderFieldsPanel();
 function renderCustomFieldsGroup() {
   const tree = document.getElementById('fields-tree');
 
-  // Remove existing custom group if present (on re-render)
+  // Preserve collapse state before removing the existing group
   const existing = document.getElementById('custom-fields-group');
+  const wasOpen = existing
+    ? existing.querySelector('#custom-fields-list')?.style.display !== 'none'
+    : false;
   if (existing) existing.remove();
 
   const wrapper = document.createElement('div');
@@ -433,7 +436,6 @@ function renderCustomFieldsGroup() {
   const itemList = document.createElement('div');
   itemList.className = 'field-group-list';
   itemList.id = 'custom-fields-list';
-  itemList.style.cssText = 'display:none;';
 
   header.addEventListener('click', () => {
     const isOpen = itemList.style.display !== 'none';
@@ -447,14 +449,21 @@ function renderCustomFieldsGroup() {
     item.className = 'field-source';
     item.dataset.customFieldId = cf.id;
     item.style.cssText = 'padding:5px 8px;border-radius:4px;font-size:12px;cursor:grab;display:flex;align-items:center;gap:6px;transition:background 0.1s;';
+    // Buttons use addEventListener to avoid XSS via injected cf.id values
     item.innerHTML = `
       <span style="color:var(--color-text-muted);font-size:10px;">⠿</span>
       <span style="flex:1;">${escapeHtml(cf.label || cf.text || '?')}</span>
-      <button class="btn-icon" title="Bearbeiten" style="font-size:11px;"
-              onclick="event.stopPropagation();openEditDialog('palette',null,'${cf.id}')">✏️</button>
-      <button class="btn-icon" title="Löschen" style="font-size:11px;"
-              onclick="event.stopPropagation();deleteCustomField('${cf.id}')">🗑️</button>
+      <button class="btn-icon edit-btn" title="Bearbeiten" style="font-size:11px;">✏️</button>
+      <button class="btn-icon del-btn"  title="Löschen"   style="font-size:11px;">🗑️</button>
     `;
+    item.querySelector('.edit-btn').addEventListener('click', e => {
+      e.stopPropagation();
+      openEditDialog('palette', null, cf.id);
+    });
+    item.querySelector('.del-btn').addEventListener('click', e => {
+      e.stopPropagation();
+      deleteCustomField(cf.id);
+    });
     item.addEventListener('mouseenter', () => item.style.background = 'var(--color-surface-2)');
     item.addEventListener('mouseleave', () => item.style.background = '');
     itemList.appendChild(item);
@@ -471,6 +480,10 @@ function renderCustomFieldsGroup() {
   wrapper.appendChild(header);
   wrapper.appendChild(itemList);
   tree.appendChild(wrapper);
+
+  // Restore collapse state after the wrapper is in the DOM
+  itemList.style.display = wasOpen ? 'block' : 'none';
+  wrapper.querySelector('.group-arrow').style.transform = wasOpen ? 'rotate(90deg)' : '';
 }
 
 /**
@@ -1197,7 +1210,12 @@ function getNestedValue(obj, path) {
 }
 
 function escapeHtml(str) {
-  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return str
+    .replace(/&/g,  '&amp;')
+    .replace(/</g,  '&lt;')
+    .replace(/>/g,  '&gt;')
+    .replace(/"/g,  '&quot;')
+    .replace(/'/g,  '&#39;');
 }
   </script>
 </body>
