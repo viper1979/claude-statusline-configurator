@@ -262,6 +262,9 @@ function Format-Field {
         'progressbar' {
             $value = Get-NestedValue $Data $Field.key
             if ($null -eq $value) { return '' }
+            if ($Field.progressStyle -eq 'raw') {
+                return "${fgAnsi}${bgAnsi}${value}${resetAnsi}"
+            }
             $bar = Format-ProgressBar -Value ([double]$value) -Style ($Field.progressStyle ?? 'color-coded') -Fg $Field.fg
             if ($Field.bg) { return "${bgAnsi}${bar}${script:AnsiReset}" }
             return $bar

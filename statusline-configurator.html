@@ -961,6 +961,7 @@ function renderEditTabGeneral() {
       ['block',       '[▓▓▓▓░░░░] 23%',  'Block'],
       ['slim',        '████░░░░ 23%',    'Slim'],
       ['color-coded', '[▓▓▓░░░░░] 23%',  'Farbkodiert (grün/gelb/rot)'],
+      ['raw',         '23',              'Rohwert (nur Zahl)'],
     ];
     el.innerHTML = `
       <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:8px;">Progress Bar Stil</div>
@@ -1288,6 +1289,9 @@ function renderFieldHtml(field, data) {
   }
 
   if (field.type === 'progressbar') {
+    if (field.progressStyle === 'raw') {
+      return `<span style="${style}">${escapeHtml(String(raw))}</span>`;
+    }
     const { bar, color } = makeProgressBar(raw, field.progressStyle || 'color-coded', fg);
     const colorStyle = color ? `color:${color};` : '';
     const finalStyle = [colorStyle, bg ? `background:${bg};padding:1px 3px;border-radius:3px;` : ''].join('');

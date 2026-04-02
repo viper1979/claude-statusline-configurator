@@ -123,6 +123,14 @@ Describe 'Format-Field' {
         $result | Should -Match '\['
     }
 
+    It 'renders progressbar with raw style as plain number without bar characters' {
+        $field = [PSCustomObject]@{ type='progressbar'; key='context_window.used_percentage'; progressStyle='raw'; fg=$null; bg=$null }
+        $result = Format-Field $field $sampleData
+        $result | Should -Match '45'
+        $result | Should -Not -Match '\['
+        $result | Should -Not -Match '%'
+    }
+
     It 'returns empty string for unknown field path' {
         $field = [PSCustomObject]@{ type='field'; key='does.not.exist'; fg=$null; bg=$null }
         Format-Field $field $sampleData | Should -BeNullOrEmpty
