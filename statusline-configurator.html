@@ -567,6 +567,7 @@ function render() {
   updateExportTextarea();
   document.getElementById('btn-add-line').disabled = state.lines.length >= 10;
   renderCustomFieldsGroup();
+  initSortable(); // must run after all palette DOM (incl. custom-fields-list) is built
 }
 
 function renderLines() {
@@ -593,7 +594,6 @@ function renderLines() {
     container.appendChild(lineEl);
   });
 
-  initSortable(); // wired in Task 5
 }
 
 function renderFieldChip(field, lineId) {
