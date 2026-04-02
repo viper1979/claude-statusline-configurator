@@ -1150,11 +1150,16 @@ function saveEditDialog() {
     }
   }
 
-  // Read Farben tab values into draft
-  const fgNone = document.getElementById('edit-fg-none')?.checked;
-  const bgNone = document.getElementById('edit-bg-none')?.checked;
-  _editDraft.fg = fgNone ? null : (document.getElementById('edit-fg')?.value || null);
-  _editDraft.bg = bgNone ? null : (document.getElementById('edit-bg')?.value || null);
+  // Read Farben tab values into draft — only if the tab was actually rendered.
+  // If the user never switched to the Colors tab, the DOM elements don't exist and
+  // _editDraft retains the fg/bg values copied at dialog-open time.
+  const fgNoneEl = document.getElementById('edit-fg-none');
+  if (fgNoneEl !== null) {
+    _editDraft.fg = fgNoneEl.checked ? null : (document.getElementById('edit-fg')?.value || null);
+    _editDraft.bg = document.getElementById('edit-bg-none')?.checked
+      ? null
+      : (document.getElementById('edit-bg')?.value || null);
+  }
 
   // Apply draft to actual state
   if (source === 'line') {
