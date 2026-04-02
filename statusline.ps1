@@ -160,6 +160,7 @@ function Format-Duration {
     One of: string | currency | bool | number | unix_timestamp | duration
 .PARAMETER Format
     Format variant string matching the data type (e.g. 'k', 'short', 'checkmark').
+    For unix_timestamp: value is treated as future epoch; past timestamps display as '0h 0m'.
 .PARAMETER FormatOptions
     PSCustomObject with extra options. Used for bool custom format: trueLabel, falseLabel.
 .OUTPUTS
@@ -199,7 +200,10 @@ function Format-FieldValue {
             switch ($Format) {
                 'yes_no'    { if ($b) { return 'yes' }    else { return 'no' } }
                 'checkmark' { if ($b) { return '✓' }      else { return '✗' } }
-                'custom'    { if ($b) { return $FormatOptions.trueLabel } else { return $FormatOptions.falseLabel } }
+                'custom'    {
+                    if ($null -eq $FormatOptions) { return "$Value" }
+                    if ($b) { return $FormatOptions.trueLabel } else { return $FormatOptions.falseLabel }
+                }
                 default     { if ($b) { return 'true' }   else { return 'false' } }
             }
         }

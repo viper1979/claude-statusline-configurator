@@ -266,6 +266,18 @@ Describe 'Format-FieldValue' {
         Format-FieldValue -Value $false -DataType 'bool' -Format 'custom' -FormatOptions $opts | Should -Be 'inaktiv'
     }
 
+    It 'falls back to raw value for bool custom format when FormatOptions is null' {
+        Format-FieldValue -Value $true -DataType 'bool' -Format 'custom' -FormatOptions $null |
+            Should -Be 'true'
+    }
+
+    It 'formats past unix_timestamp as 0h 0m (already elapsed)' {
+        # A timestamp in the past has no remaining time — clamps to 0
+        $pastTs = [DateTimeOffset]::UtcNow.AddHours(-1).ToUnixTimeSeconds()
+        Format-FieldValue -Value $pastTs -DataType 'unix_timestamp' -Format 'hours' -FormatOptions $null |
+            Should -Be '0h 0m'
+    }
+
     It 'formats duration 5000 seconds as hours format: 1h 23m' {
         Format-FieldValue -Value 5000 -DataType 'duration' -Format 'hours' -FormatOptions $null |
             Should -Be '1h 23m'
