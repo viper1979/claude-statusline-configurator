@@ -841,18 +841,27 @@ function renderEditTabGeneral() {
   const f  = _editDraft;
   if (!f) return;
 
-  if (f.type === 'static' || _editCtx.source === 'palette' || _editCtx.source === 'palette-new') {
-    // Editable: label (for palette) + text
-    const showLabel = _editCtx.source !== 'line';
+  // Palette sources (edit or create custom fields) always show label + text inputs
+  if (_editCtx.source === 'palette' || _editCtx.source === 'palette-new') {
     el.innerHTML = `
-      ${showLabel ? `
       <div style="margin-bottom:10px;">
         <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:4px;">Name in der Palette</div>
         <input id="edit-label" type="text" value="${escapeHtml(f.label || '')}"
                style="width:100%;box-sizing:border-box;padding:6px 8px;border-radius:4px;
                       border:1px solid var(--color-border);background:var(--color-surface-2);
                       color:var(--color-text);font-size:12px;">
-      </div>` : ''}
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:4px;">Text</div>
+        <input id="edit-text" type="text" value="${escapeHtml(f.text || '')}"
+               style="width:100%;box-sizing:border-box;padding:6px 8px;border-radius:4px;
+                      border:1px solid var(--color-border);background:var(--color-surface-2);
+                      color:var(--color-text);font-size:12px;">
+      </div>
+    `;
+  } else if (f.type === 'static') {
+    // Line-placed static field — text only, no label input
+    el.innerHTML = `
       <div>
         <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:4px;">Text</div>
         <input id="edit-text" type="text" value="${escapeHtml(f.text || '')}"
