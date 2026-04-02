@@ -379,15 +379,17 @@ Describe 'Invoke-Main JSON persistence' {
         Get-Content $payloadPath -Raw | Should -Match '"version"'
     }
 
-    It 'does not crash when the target directory is read-only' {
-        # Simulate a write failure by providing an invalid path via a config in a read-only location.
-        # We test this by using a config that points the script to a location it cannot write to.
-        # The simplest safe approach: pass a config from a path whose sibling directory doesn't exist.
-        $roConfig = Join-Path $TestDrive 'subdir' 'statusline-config.json'
-        New-Item -ItemType Directory -Path (Join-Path $TestDrive 'subdir') -Force | Out-Null
-        Set-Content -Path $roConfig -Value $config -Encoding UTF8
-        # Even if writing fails, the function must return without throwing
-        { Invoke-Main -ConfigPath $roConfig -InputJson '{"version":"1.0"}' } | Should -Not -Throw
+    It 'does not crash when Set-Content fails — payload directory blocked by a directory at that path' {
+        # Create a DIRECTORY at the location where last-payload.json would be written.
+        # Set-Content cannot write a file when a directory exists at that path — it throws.
+        # The try/catch in Invoke-Main must swallow this error silently.
+        $blockedDir = Join-Path $TestDrive 'blocked'
+        New-Item -ItemType Directory -Path $blockedDir -Force | Out-Null
+        # Create a DIRECTORY called 'last-payload.json' to block the file write
+        New-Item -ItemType Directory -Path (Join-Path $blockedDir 'last-payload.json') -Force | Out-Null
+        $blockedConfig = Join-Path $blockedDir 'statusline-config.json'
+        Set-Content -Path $blockedConfig -Value $config -Encoding UTF8
+        { Invoke-Main -ConfigPath $blockedConfig -InputJson '{"version":"1.0"}' } | Should -Not -Throw
     }
 
     It 'sets script:KnownKeys from config so new_fields_indicator works in same call' {
