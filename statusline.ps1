@@ -9,6 +9,30 @@ $ErrorActionPreference = 'SilentlyContinue'
 
 <#
 .SYNOPSIS
+    Recursively enumerates all dot-notation key paths in a PSCustomObject.
+.PARAMETER Obj
+    The object to enumerate (PSCustomObject from ConvertFrom-Json).
+.PARAMETER Prefix
+    Current path prefix (empty string for root call).
+.OUTPUTS
+    Array of dot-notation key strings.
+#>
+function Get-AllKeys {
+    param([object]$Obj, [string]$Prefix)
+    if ($null -eq $Obj) { return @() }
+    $result = @()
+    $Obj.PSObject.Properties | ForEach-Object {
+        $key = if ($Prefix) { "$Prefix.$($_.Name)" } else { $_.Name }
+        $result += $key
+        if ($_.Value -is [PSCustomObject]) {
+            $result += Get-AllKeys $_.Value $key
+        }
+    }
+    return $result
+}
+
+<#
+.SYNOPSIS
     Retrieves a value from a PSCustomObject by dot-notation path.
 .PARAMETER Data
     The root object parsed from JSON.
@@ -215,7 +239,7 @@ function Format-FieldValue {
 .SYNOPSIS
     Renders a single field configuration object as an ANSI-formatted string.
 .PARAMETER Field
-    PSCustomObject with properties: type, key, text, fg, bg, progressStyle
+    PSCustomObject with properties: type, key, text, fg, bg, progressStyle, dataType, format, formatOptions
 .PARAMETER Data
     PSCustomObject parsed from Claude Code's JSON input.
 .OUTPUTS
@@ -242,11 +266,24 @@ function Format-Field {
             if ($Field.bg) { return "${bgAnsi}${bar}${script:AnsiReset}" }
             return $bar
         }
+        'new_fields_indicator' {
+            if (-not $script:KnownKeys) { return '' }
+            $allKeys = Get-AllKeys $Data ''
+            $newKeys = $allKeys | Where-Object { $script:KnownKeys -notcontains $_ }
+            $count   = ($newKeys | Measure-Object).Count
+            if ($count -eq 0) { return '' }
+            return "${fgAnsi}${bgAnsi}● ${count} neue Felder${resetAnsi}"
+        }
         default {
             # type = 'field'
             $value = Get-NestedValue $Data $Field.key
             if ($null -eq $value -or "$value" -eq '') { return '' }
-            return "${fgAnsi}${bgAnsi}${value}${resetAnsi}"
+            $formatted = if ($Field.dataType) {
+                Format-FieldValue -Value $value -DataType $Field.dataType -Format $Field.format -FormatOptions $Field.formatOptions
+            } else {
+                "$value"
+            }
+            return "${fgAnsi}${bgAnsi}${formatted}${resetAnsi}"
         }
     }
 }

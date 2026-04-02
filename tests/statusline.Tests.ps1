@@ -316,3 +316,76 @@ Describe 'Format-FieldValue' {
             Should -Be 'anything'
     }
 }
+
+Describe 'Get-AllKeys' {
+    It 'returns top-level keys' {
+        $data = [PSCustomObject]@{ version = '1.0'; cwd = '/tmp' }
+        $result = Get-AllKeys $data ''
+        $result | Should -Contain 'version'
+        $result | Should -Contain 'cwd'
+    }
+
+    It 'returns nested keys with dot notation' {
+        $inner = [PSCustomObject]@{ display_name = 'Opus' }
+        $data  = [PSCustomObject]@{ model = $inner }
+        $result = Get-AllKeys $data ''
+        $result | Should -Contain 'model'
+        $result | Should -Contain 'model.display_name'
+    }
+
+    It 'returns empty array for null input' {
+        $result = Get-AllKeys $null ''
+        $result.Count | Should -Be 0
+    }
+}
+
+Describe 'Format-Field with dataType' {
+    BeforeAll {
+        $data = [PSCustomObject]@{
+            cost = [PSCustomObject]@{ total_cost_usd = 0.01234 }
+            model = [PSCustomObject]@{ display_name = 'Opus' }
+        }
+    }
+
+    It 'formats field value using dataType=currency' {
+        $field = [PSCustomObject]@{
+            type='field'; key='cost.total_cost_usd'; dataType='currency'; format=$null; formatOptions=$null; fg=$null; bg=$null
+        }
+        Format-Field $field $data | Should -Be '0.01'
+    }
+
+    It 'falls back to raw value when dataType is not set' {
+        $field = [PSCustomObject]@{
+            type='field'; key='model.display_name'; dataType=$null; format=$null; formatOptions=$null; fg=$null; bg=$null
+        }
+        Format-Field $field $data | Should -Be 'Opus'
+    }
+}
+
+Describe 'new_fields_indicator in Format-Field' {
+    BeforeAll {
+        $script:KnownKeys = @('model.display_name', 'version')
+        $data = [PSCustomObject]@{
+            model   = [PSCustomObject]@{ display_name = 'Opus' }
+            version = '1.0'
+            newKey  = 'surprise'
+        }
+    }
+
+    AfterAll {
+        $script:KnownKeys = $null
+    }
+
+    It 'returns indicator string when new keys are present' {
+        $field = [PSCustomObject]@{ type='new_fields_indicator'; fg=$null; bg=$null }
+        $result = Format-Field $field $data
+        $result | Should -Match '●'
+        $result | Should -Match 'neue'
+    }
+
+    It 'returns empty string when all keys are known' {
+        $script:KnownKeys = @('model', 'model.display_name', 'version', 'newKey')
+        $field = [PSCustomObject]@{ type='new_fields_indicator'; fg=$null; bg=$null }
+        Format-Field $field $data | Should -BeNullOrEmpty
+    }
+}
