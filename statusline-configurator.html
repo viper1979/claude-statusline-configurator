@@ -789,12 +789,12 @@ function openEditDialog(source, lineId, fieldId) {
     field = state.customFields.find(f => f.id === fieldId);
     if (!field) return;
   } else if (source === 'palette-new') {
-    // Creating a new custom field — start with a blank template
-    field = { id: generateId(), label: '', text: '', fg: null, bg: null };
+    // Creating a new custom field — static text field with a blank template
+    field = { id: generateId(), type: 'static', label: '', text: '', fg: null, bg: null };
   }
 
   _editCtx   = { source, lineId, fieldId: field.id };
-  _editDraft = JSON.parse(JSON.stringify(field));
+  _editDraft = structuredClone(field);
 
   const title = source === 'palette-new'
     ? 'Neues Feld'
@@ -831,9 +831,9 @@ function switchEditTab(tab) {
   });
 
   // Render the tab content when switching
-  if (tab === 'general')  renderEditTabGeneral();
-  if (tab === 'datatype') renderEditTabDatatype();
-  if (tab === 'colors')   renderEditTabColors();
+  if (tab === 'general')       renderEditTabGeneral();
+  else if (tab === 'datatype') renderEditTabDatatype();
+  else if (tab === 'colors')   renderEditTabColors();
 }
 
 // Stubs — filled in Task 6
