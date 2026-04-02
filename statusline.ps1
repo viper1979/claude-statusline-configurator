@@ -18,7 +18,7 @@ $ErrorActionPreference = 'SilentlyContinue'
     Array of dot-notation key strings.
 #>
 function Get-AllKeys {
-    param([object]$Obj, [string]$Prefix)
+    param([object]$Obj, [string]$Prefix = '')
     if ($null -eq $Obj) { return @() }
     $result = @()
     $Obj.PSObject.Properties | ForEach-Object {

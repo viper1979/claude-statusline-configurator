@@ -364,7 +364,6 @@ Describe 'Format-Field with dataType' {
 
 Describe 'new_fields_indicator in Format-Field' {
     BeforeAll {
-        $script:KnownKeys = @('model.display_name', 'version')
         $data = [PSCustomObject]@{
             model   = [PSCustomObject]@{ display_name = 'Opus' }
             version = '1.0'
@@ -376,16 +375,23 @@ Describe 'new_fields_indicator in Format-Field' {
         $script:KnownKeys = $null
     }
 
-    It 'returns indicator string when new keys are present' {
-        $field = [PSCustomObject]@{ type='new_fields_indicator'; fg=$null; bg=$null }
-        $result = Format-Field $field $data
-        $result | Should -Match '●'
-        $result | Should -Match 'neue'
+    Context 'when unknown keys are present' {
+        BeforeAll { $script:KnownKeys = @('model.display_name', 'version') }
+
+        It 'returns indicator string with bullet and count' {
+            $field = [PSCustomObject]@{ type='new_fields_indicator'; fg=$null; bg=$null }
+            $result = Format-Field $field $data
+            $result | Should -Match '●'
+            $result | Should -Match 'neue'
+        }
     }
 
-    It 'returns empty string when all keys are known' {
-        $script:KnownKeys = @('model', 'model.display_name', 'version', 'newKey')
-        $field = [PSCustomObject]@{ type='new_fields_indicator'; fg=$null; bg=$null }
-        Format-Field $field $data | Should -BeNullOrEmpty
+    Context 'when all keys are known' {
+        BeforeAll { $script:KnownKeys = @('model', 'model.display_name', 'version', 'newKey') }
+
+        It 'returns empty string' {
+            $field = [PSCustomObject]@{ type='new_fields_indicator'; fg=$null; bg=$null }
+            Format-Field $field $data | Should -BeNullOrEmpty
+        }
     }
 }
