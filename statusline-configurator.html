@@ -561,7 +561,7 @@ function initSortable() {
           const defaults = FIELD_TYPE_DEFAULTS[panelFieldKey] || {};
           newField = isPercentage
             ? { id: generateId(), type: 'progressbar', key: panelFieldKey, progressStyle: 'color-coded', fg: null, bg: null }
-            : { id: generateId(), type: 'field', key: panelFieldKey, fg: null, bg: null, ...defaults };
+            : { id: generateId(), type: 'field', key: panelFieldKey, ...defaults, fg: null, bg: null };
           _draggedField = null;
         } else {
           // Zone-to-zone chip move → use the field buffered by onRemove
