@@ -218,6 +218,44 @@
               border-radius:var(--radius);padding:20px;z-index:101;min-width:290px;max-width:340px;">
   </div>
 
+  <!-- Edit Dialog -->
+  <div id="edit-dialog-overlay"
+       style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:200;"
+       onclick="closeEditDialog()"></div>
+  <div id="edit-dialog"
+       style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+              background:var(--color-surface);border:1px solid var(--color-border);
+              border-radius:var(--radius);z-index:201;min-width:360px;max-width:440px;
+              box-shadow:0 8px 32px rgba(0,0,0,0.4);">
+    <div style="padding:14px 20px;border-bottom:1px solid var(--color-border);">
+      <div id="edit-dialog-title" style="font-weight:600;font-size:13px;"></div>
+    </div>
+    <div id="edit-dialog-tabs" style="display:flex;border-bottom:1px solid var(--color-border);">
+      <button class="edit-tab-btn" data-tab="general"
+              style="flex:1;padding:9px 4px;font-size:12px;border:none;background:none;
+                     cursor:pointer;color:var(--color-text);border-bottom:2px solid transparent;"
+              onclick="switchEditTab('general')">Allgemein</button>
+      <button class="edit-tab-btn" data-tab="datatype"
+              style="flex:1;padding:9px 4px;font-size:12px;border:none;background:none;
+                     cursor:pointer;color:var(--color-text);border-bottom:2px solid transparent;"
+              onclick="switchEditTab('datatype')">Datentyp</button>
+      <button class="edit-tab-btn" data-tab="colors"
+              style="flex:1;padding:9px 4px;font-size:12px;border:none;background:none;
+                     cursor:pointer;color:var(--color-text);border-bottom:2px solid transparent;"
+              onclick="switchEditTab('colors')">Farben</button>
+    </div>
+    <div style="padding:16px 20px;min-height:120px;">
+      <div class="edit-tab-content" data-tab="general"  id="edit-tab-general"></div>
+      <div class="edit-tab-content" data-tab="datatype" id="edit-tab-datatype" style="display:none;"></div>
+      <div class="edit-tab-content" data-tab="colors"   id="edit-tab-colors"   style="display:none;"></div>
+    </div>
+    <div style="padding:12px 20px;border-top:1px solid var(--color-border);
+                display:flex;justify-content:flex-end;gap:8px;">
+      <button class="btn" onclick="closeEditDialog()">Abbrechen</button>
+      <button class="btn btn-primary" onclick="saveEditDialog()">Speichern</button>
+    </div>
+  </div>
+
 <script>
 /* Sortable.js v1.15.6 — inlined */
 /*! Sortable 1.15.6 - MIT | git://github.com/SortableJS/Sortable.git */
@@ -734,6 +772,75 @@ addLine();
 
 let _popupContext = null; // { lineId, fieldId }
 let _draggedField = null; // buffer for zone-to-zone chip drag
+
+// ─── Edit Dialog ─────────────────────────────────────────────────────────
+
+let _editCtx = null;   // { source: 'line'|'palette'|'palette-new', lineId, fieldId }
+let _editDraft = null; // deep copy of the field being edited
+
+function openEditDialog(source, lineId, fieldId) {
+  let field;
+  if (source === 'line') {
+    const line = state.lines.find(l => l.id === lineId);
+    if (!line) return;
+    field = line.fields.find(f => f.id === fieldId);
+    if (!field) return;
+  } else if (source === 'palette') {
+    field = state.customFields.find(f => f.id === fieldId);
+    if (!field) return;
+  } else if (source === 'palette-new') {
+    // Creating a new custom field — start with a blank template
+    field = { id: generateId(), label: '', text: '', fg: null, bg: null };
+  }
+
+  _editCtx   = { source, lineId, fieldId: field.id };
+  _editDraft = JSON.parse(JSON.stringify(field));
+
+  const title = source === 'palette-new'
+    ? 'Neues Feld'
+    : source === 'palette'
+      ? `Palette: ${field.label || field.text || '?'}`
+      : `Feld: ${fieldLabel(field)}`;
+  document.getElementById('edit-dialog-title').textContent = title;
+
+  // Show/hide Datentyp tab — only for line fields of type 'field'
+  const isDatatypeVisible = source === 'line' && field.type === 'field';
+  document.querySelector('.edit-tab-btn[data-tab="datatype"]').style.display =
+    isDatatypeVisible ? '' : 'none';
+
+  switchEditTab('general');
+  document.getElementById('edit-dialog-overlay').style.display = '';
+  document.getElementById('edit-dialog').style.display = '';
+}
+
+function closeEditDialog() {
+  document.getElementById('edit-dialog-overlay').style.display = 'none';
+  document.getElementById('edit-dialog').style.display = 'none';
+  _editCtx   = null;
+  _editDraft = null;
+}
+
+function switchEditTab(tab) {
+  document.querySelectorAll('.edit-tab-btn').forEach(btn => {
+    const active = btn.dataset.tab === tab;
+    btn.style.borderBottomColor = active ? 'var(--color-accent)' : 'transparent';
+    btn.style.color = active ? 'var(--color-accent)' : 'var(--color-text)';
+  });
+  document.querySelectorAll('.edit-tab-content').forEach(content => {
+    content.style.display = content.dataset.tab === tab ? '' : 'none';
+  });
+
+  // Render the tab content when switching
+  if (tab === 'general')  renderEditTabGeneral();
+  if (tab === 'datatype') renderEditTabDatatype();
+  if (tab === 'colors')   renderEditTabColors();
+}
+
+// Stubs — filled in Task 6
+function renderEditTabGeneral()  { document.getElementById('edit-tab-general').textContent  = 'Allgemein (kommt noch)'; }
+function renderEditTabDatatype() { document.getElementById('edit-tab-datatype').textContent = 'Datentyp (kommt noch)'; }
+function renderEditTabColors()   { document.getElementById('edit-tab-colors').textContent   = 'Farben (kommt noch)'; }
+function saveEditDialog()        { closeEditDialog(); }
 
 function openStylePopup(lineId, fieldId) {
   const line = state.lines.find(l => l.id === lineId);
