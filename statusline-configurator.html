@@ -1209,6 +1209,62 @@ function makeProgressBar(value, style, fg) {
 }
 
 /**
+ * Formats a raw value according to dataType/format/formatOptions — mirrors PS Format-FieldValue.
+ * @param {*}      value         - raw value from sample data
+ * @param {string} dataType      - 'string'|'currency'|'number'|'bool'|'duration'|'unix_timestamp'
+ * @param {string|null} format   - type-specific format string
+ * @param {object|null} formatOptions - extra options (e.g. trueLabel/falseLabel for bool/custom)
+ * @returns {string}
+ */
+function formatFieldValue(value, dataType, format, formatOptions) {
+  switch (dataType) {
+    case 'currency': {
+      const n = parseFloat(value);
+      return isNaN(n) ? String(value) : n.toFixed(2);
+    }
+    case 'number': {
+      const n = parseFloat(value);
+      if (isNaN(n)) return String(value);
+      if (format === 'k') return Math.round(n / 1000) + 'k';
+      if (format === 'm') return Math.round(n / 1000000) + 'm';
+      return String(Math.round(n)); // 'raw'
+    }
+    case 'bool': {
+      const b = value === true || value === 'true' || value === 1 || value === '1';
+      switch (format) {
+        case 'yes_no':    return b ? 'yes' : 'no';
+        case 'checkmark': return b ? '✓' : '✗';
+        case 'custom':    return b
+          ? (formatOptions?.trueLabel  || 'true')
+          : (formatOptions?.falseLabel || 'false');
+        default:          return b ? 'true' : 'false'; // true_false
+      }
+    }
+    case 'unix_timestamp': {
+      const now  = Math.floor(Date.now() / 1000);
+      const diff = Math.max(0, Number(value) - now);
+      const h = Math.floor(diff / 3600);
+      const m = Math.floor((diff % 3600) / 60);
+      return `${h}h ${m}m`;
+    }
+    case 'duration': {
+      const secs = Math.max(0, Math.floor(Number(value)));
+      const d = Math.floor(secs / 86400);
+      const h = Math.floor((secs % 86400) / 3600);
+      const m = Math.floor((secs % 3600) / 60);
+      if (format === 'hours') return `${h}h ${m}m`;
+      if (format === 'long')  return `${d}d ${h}h ${m}m ${secs % 60}s`;
+      // 'short' — omit leading zero units
+      if (d > 0) return `${d}d ${h}h ${m}m`;
+      if (h > 0) return `${h}h ${m}m`;
+      return `${m}m`;
+    }
+    default: // 'string' and unknown types
+      return String(value);
+  }
+}
+
+/**
  * Formats a field's value for display in the preview (returns HTML string with inline styles).
  * @param {object} field - field config object from state
  * @param {object} data  - sample data object
@@ -1238,8 +1294,11 @@ function renderFieldHtml(field, data) {
     return `<span style="${finalStyle}">${bar}</span>`;
   }
 
-  // type === 'field'
-  return `<span style="${style}">${escapeHtml(String(raw))}</span>`;
+  // type === 'field' — apply dataType formatting if configured
+  const formatted = field.dataType
+    ? formatFieldValue(raw, field.dataType, field.format, field.formatOptions)
+    : String(raw);
+  return `<span style="${style}">${escapeHtml(formatted)}</span>`;
 }
 
 function getNestedValue(obj, path) {
