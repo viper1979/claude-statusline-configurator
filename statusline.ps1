@@ -95,6 +95,9 @@ $script:PbColorLow  = '#4ade80'   # green  — 0–49%
 $script:PbColorMid  = '#facc15'   # yellow — 50–79%
 $script:PbColorHigh = '#f87171'   # red    — 80–100%
 
+# Field keys that contain file-system paths (used by Truncate-Path in Format-Field)
+$script:PathKeys = @('cwd', 'workspace.current_dir', 'workspace.project_dir')
+
 <#
 .SYNOPSIS
     Renders a percentage value as an ANSI-colored progress bar string.
@@ -345,8 +348,7 @@ function Format-Field {
                 "$value"
             }
             # Apply path truncation for path-type fields when pathDepth is configured
-            $pathKeys = @('cwd', 'workspace.current_dir', 'workspace.project_dir')
-            if ($Field.pathDepth -and $pathKeys -contains $Field.key) {
+            if ($Field.pathDepth -and $script:PathKeys -contains $Field.key) {
                 $formatted = Truncate-Path -Value $formatted -Depth $Field.pathDepth
             }
             return "${fgAnsi}${bgAnsi}${formatted}${resetAnsi}"
