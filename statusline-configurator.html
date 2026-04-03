@@ -233,19 +233,18 @@
         <div class="panel-title" style="margin-bottom:8px;">Vorschau</div>
         <div class="preview-output" id="preview-output" aria-live="polite"></div>
       </section>
+      <section class="export-section">
+        <div class="panel-title">Export / Import</div>
+        <div class="export-actions">
+          <button class="btn btn-primary" onclick="downloadConfig()">⬇ Download statusline-config.json</button>
+          <button class="btn" onclick="copyConfig()">📋 Kopieren</button>
+          <button class="btn" onclick="triggerImport()">📂 Laden</button>
+          <input type="file" id="import-input" accept=".json" style="display:none" aria-label="Import config file" onchange="importConfig(event)">
+        </div>
+        <textarea class="export-textarea" id="export-textarea" readonly placeholder='{"lines": []}' spellcheck="false"></textarea>
+      </section>
     </main>
   </div>
-
-  <section class="export-section">
-    <div class="panel-title">Export / Import</div>
-    <div class="export-actions">
-      <button class="btn btn-primary" onclick="downloadConfig()">⬇ Download statusline-config.json</button>
-      <button class="btn" onclick="copyConfig()">📋 Kopieren</button>
-      <button class="btn" onclick="triggerImport()">📂 Laden</button>
-      <input type="file" id="import-input" accept=".json" style="display:none" aria-label="Import config file" onchange="importConfig(event)">
-    </div>
-    <textarea class="export-textarea" id="export-textarea" readonly placeholder='{"lines": []}' spellcheck="false"></textarea>
-  </section>
 
   <!-- Edit Dialog -->
   <div id="edit-dialog-overlay"
