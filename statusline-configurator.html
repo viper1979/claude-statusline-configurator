@@ -815,6 +815,7 @@ function buildExportJson() {
       if (f.dataType)      base.dataType = f.dataType;
       if (f.format)        base.format = f.format;
       if (f.formatOptions) base.formatOptions = f.formatOptions;
+      if (f.pathDepth)     base.pathDepth = f.pathDepth;
       return base;
     }),
   }));
@@ -918,6 +919,7 @@ function loadConfig(json) {
       dataType:      f.dataType      || null,
       format:        f.format        || null,
       formatOptions: f.formatOptions || null,
+      pathDepth:     f.pathDepth     || null,
     })),
   }));
 
@@ -1091,13 +1093,31 @@ function renderEditTabGeneral() {
       </p>
     `;
   } else {
-    // type === 'field' — key is read-only
+    // type === 'field' — key is read-only; path fields also show pathDepth option
+    const isPathField = PATH_KEYS.has(f.key);
+    const hasDepth    = f.pathDepth != null && f.pathDepth > 0;
     el.innerHTML = `
       <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:4px;">Key</div>
       <div style="padding:6px 8px;border-radius:4px;border:1px solid var(--color-border);
-                  background:var(--color-surface-2);font-size:12px;color:var(--color-text-muted);">
+                  background:var(--color-surface-2);font-size:12px;color:var(--color-text-muted);
+                  margin-bottom:${isPathField ? '12px' : '0'};">
         ${escapeHtml(f.key || '')}
       </div>
+      ${isPathField ? `
+        <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:6px;">Pfadtiefe</div>
+        <label style="display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:4px;cursor:pointer;">
+          <input type="radio" name="edit-path-depth" value="full" ${!hasDepth ? 'checked' : ''}>
+          <span>Vollständiger Pfad</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;">
+          <input type="radio" name="edit-path-depth" value="limited" ${hasDepth ? 'checked' : ''}>
+          <span>Letzte</span>
+          <input type="number" id="edit-path-depth-n" min="1" value="${hasDepth ? f.pathDepth : 2}"
+                 style="width:52px;padding:3px 6px;border-radius:4px;border:1px solid var(--color-border);
+                        background:var(--color-surface-2);color:var(--color-text);font-size:12px;">
+          <span>Segment(e)</span>
+        </label>
+      ` : ''}
     `;
   }
 }
@@ -1247,6 +1267,17 @@ function saveEditDialog() {
   const pbBracketsEl   = document.getElementById('edit-pb-brackets');
   if (pbCharsetRadio)       _editDraft.barCharset  = pbCharsetRadio.value;
   if (pbBracketsEl !== null) _editDraft.barBrackets = pbBracketsEl.checked;
+
+  // Read pathDepth for path-key fields
+  const pathDepthRadio = document.querySelector('[name="edit-path-depth"]:checked');
+  if (pathDepthRadio) {
+    if (pathDepthRadio.value === 'full') {
+      _editDraft.pathDepth = null;
+    } else {
+      const n = parseInt(document.getElementById('edit-path-depth-n')?.value, 10);
+      _editDraft.pathDepth = (isNaN(n) || n < 1) ? 1 : n;
+    }
+  }
 
   // Read Datentyp tab values into draft (only when tab is visible)
   const typeEl = document.getElementById('edit-datatype');
