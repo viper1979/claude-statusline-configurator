@@ -342,6 +342,9 @@ const PERCENTAGE_KEYS = new Set([
   'rate_limits.seven_day.used_percentage',
 ]);
 
+// Fields that contain file-system paths (offer pathDepth option)
+const PATH_KEYS = new Set(['cwd', 'workspace.current_dir', 'workspace.project_dir']);
+
 // Default data type for each known field key.
 // When a field is dragged from the palette, this mapping is applied automatically.
 // The user can override the dataType/format in the Edit Dialog.
@@ -1419,10 +1422,13 @@ function renderFieldHtml(field, data) {
   }
 
   // type === 'field' — apply dataType formatting if configured
-  const formatted = field.dataType
+  let displayValue = field.dataType
     ? formatFieldValue(raw, field.dataType, field.format, field.formatOptions)
     : String(raw);
-  return `<span style="${style}">${escapeHtml(formatted)}</span>`;
+  if (field.pathDepth && PATH_KEYS.has(field.key)) {
+    displayValue = truncatePath(displayValue, field.pathDepth);
+  }
+  return `<span style="${style}">${escapeHtml(displayValue)}</span>`;
 }
 
 function getNestedValue(obj, path) {
@@ -1437,6 +1443,22 @@ function escapeHtml(str) {
     .replace(/>/g,  '&gt;')
     .replace(/"/g,  '&quot;')
     .replace(/'/g,  '&#39;');
+}
+
+/**
+ * Truncates a path string to the last N segments, prefixed with "..." if segments
+ * were removed. Returns the original value unchanged if depth is null/0 or the path
+ * has fewer segments than depth.
+ * @param {string} value - path string (may use / or \ as separator)
+ * @param {number|null} depth - number of trailing segments to keep
+ * @returns {string}
+ */
+function truncatePath(value, depth) {
+  if (!depth || depth <= 0) return value;
+  const sep   = value.includes('\\') ? '\\' : '/';
+  const parts = value.split(/[/\\]/).filter(p => p !== '');
+  if (parts.length <= depth) return value;
+  return '...' + sep + parts.slice(parts.length - depth).join(sep);
 }
   </script>
 </body>
