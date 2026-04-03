@@ -923,7 +923,6 @@ function fieldLabel(field) {
   return '?';
 }
 
-// ─── Stubs — replaced in later tasks ─────────────────────────────────────
 // ─── Drag & Drop (Sortable.js) ────────────────────────────────────────────
 
 function initSortable() {
@@ -1048,6 +1047,8 @@ function buildExportJson() {
       if (f.fg)            base.fg = f.fg;
       if (f.bg)            base.bg = f.bg;
       if (f.progressStyle && f.type === 'progressbar') base.progressStyle = f.progressStyle;
+      if (f.type === 'progressbar' && f.barBrackets !== undefined) base.barBrackets = f.barBrackets;
+      if (f.type === 'progressbar' && f.barCharset)               base.barCharset  = f.barCharset;
       if (f.dataType)      base.dataType = f.dataType;
       if (f.format)        base.format = f.format;
       if (f.formatOptions) base.formatOptions = f.formatOptions;
@@ -1662,7 +1663,7 @@ function formatFieldValue(value, dataType, format, formatOptions) {
       const h = Math.floor((secs % 86400) / 3600);
       const m = Math.floor((secs % 3600) / 60);
       if (format === 'hours') return `${h}h ${m}m`;
-      if (format === 'long')  return `${d}d ${h}h ${m}m ${secs % 60}s`;
+      if (format === 'long')  return d > 0 ? `${d}d ${h}hr ${m}min` : `${h}hr ${m}min`;
       // 'short' — omit leading zero units
       if (d > 0) return `${d}d ${h}h ${m}m`;
       if (h > 0) return `${h}h ${m}m`;
