@@ -872,6 +872,7 @@ function applyTheme(id) {
   if (!theme) return;
   state.lines.forEach(line => {
     line.fields.forEach(field => {
+      if (field.type === 'progressbar') return; // Theme fieldFg must not suppress threshold colors
       if (theme.fieldFg !== null) field.fg = theme.fieldFg;
       if (theme.fieldBg !== null) field.bg = theme.fieldBg;
     });
