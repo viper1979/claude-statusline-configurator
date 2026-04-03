@@ -90,10 +90,12 @@ function ConvertTo-AnsiBg {
 
 $script:AnsiReset = "$([char]27)[0m"
 
-# Threshold colors (matches configurator JS constants)
-$script:PbColorLow  = '#4ade80'   # green  — 0–49%
-$script:PbColorMid  = '#facc15'   # yellow — 50–79%
-$script:PbColorHigh = '#f87171'   # red    — 80–100%
+# Default progressbar threshold colors (overridden by active theme at runtime)
+$script:PbThresholds = @(
+    [PSCustomObject]@{ upTo = 50;  fg = '#4ade80' },
+    [PSCustomObject]@{ upTo = 80;  fg = '#facc15' },
+    [PSCustomObject]@{ upTo = 100; fg = '#f87171' }
+)
 
 # Field keys that contain file-system paths (used by Truncate-Path in Format-Field)
 $script:PathKeys = @('cwd', 'workspace.current_dir', 'workspace.project_dir')
@@ -120,7 +122,8 @@ function Format-ProgressBar {
         [string]$Style,
         [string]$Fg,
         [bool]$Brackets = $true,
-        [string]$Charset = 'block'
+        [string]$Charset = 'block',
+        [object]$Thresholds = $null   # optional array of {upTo, fg}; null = use script defaults
     )
     $pct    = [Math]::Min(100, [Math]::Max(0, $Value))
     $filled = [int][Math]::Round($pct / 10)
@@ -142,9 +145,9 @@ function Format-ProgressBar {
     $color = if ($Fg) {
         $Fg
     } elseif ($Style -eq 'color-coded') {
-        if ($pct -lt 50) { $script:PbColorLow }
-        elseif ($pct -lt 80) { $script:PbColorMid }
-        else { $script:PbColorHigh }
+        $activeThresholds = if ($Thresholds) { $Thresholds } else { $script:PbThresholds }
+        $matched = $activeThresholds | Where-Object { $pct -lt $_.upTo } | Select-Object -First 1
+        if ($matched) { $matched.fg } else { ($activeThresholds | Select-Object -Last 1).fg }
     } else {
         $null
     }
@@ -326,7 +329,8 @@ function Format-Field {
             if ($Field.barCharset)            { $effectiveCharset  = $Field.barCharset }
 
             $bar = Format-ProgressBar -Value ([double]$value) -Style $effectiveStyle -Fg $Field.fg `
-                                       -Brackets $effectiveBrackets -Charset $effectiveCharset
+                                       -Brackets $effectiveBrackets -Charset $effectiveCharset `
+                                       -Thresholds $script:PbThresholds
             if ($Field.bg) { return "${bgAnsi}${bar}${script:AnsiReset}" }
             return $bar
         }
@@ -416,6 +420,14 @@ function Invoke-Main {
 
     # Expose knownKeys to script scope so Format-Field can access them for new_fields_indicator
     $script:KnownKeys = if ($config.knownKeys) { $config.knownKeys } else { $null }
+
+    # Load active theme thresholds into script scope for Format-ProgressBar
+    if ($config.activeTheme -and $config.themes) {
+        $activeThemeObj = $config.themes | Where-Object { $_.id -eq $config.activeTheme } | Select-Object -First 1
+        if ($activeThemeObj -and $activeThemeObj.progressThresholds) {
+            $script:PbThresholds = $activeThemeObj.progressThresholds
+        }
+    }
 
     # Render each line
     $output = $config.lines | ForEach-Object { Format-Line $_ $data } | Where-Object { $_ -ne '' }

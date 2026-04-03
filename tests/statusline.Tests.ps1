@@ -91,6 +91,22 @@ Describe 'Format-ProgressBar' {
         $result = Format-ProgressBar -Value -5 -Style 'block' -Fg $null
         $result | Should -Match '0%'
     }
+
+    It 'uses custom threshold colors when Thresholds parameter is provided' {
+        $thresholds = @(
+            [PSCustomObject]@{ upTo = 50;  fg = '#0000ff' },
+            [PSCustomObject]@{ upTo = 80;  fg = '#ff00ff' },
+            [PSCustomObject]@{ upTo = 100; fg = '#00ffff' }
+        )
+        $low = Format-ProgressBar -Value 20 -Style 'color-coded' -Fg $null -Thresholds $thresholds
+        $low | Should -Match '0;0;255'      # blue = #0000ff
+
+        $mid = Format-ProgressBar -Value 65 -Style 'color-coded' -Fg $null -Thresholds $thresholds
+        $mid | Should -Match '255;0;255'    # magenta = #ff00ff
+
+        $high = Format-ProgressBar -Value 85 -Style 'color-coded' -Fg $null -Thresholds $thresholds
+        $high | Should -Match '0;255;255'   # cyan = #00ffff
+    }
 }
 
 Describe 'Format-Field' {
@@ -489,6 +505,38 @@ Describe 'Truncate-Path' {
 
     It 'truncates windows path to last 1 segment with ... prefix' {
         Truncate-Path -Value 'C:\Das\ist\mein\Pfad' -Depth 1 | Should -Be '...\Pfad'
+    }
+}
+
+Describe 'Invoke-Main theme integration' {
+    It 'uses active theme progressbar thresholds when rendering' {
+        $config = @{
+            activeTheme = 'theme1'
+            themes      = @(
+                @{
+                    id                 = 'theme1'
+                    name               = 'Test'
+                    fieldFg            = $null
+                    fieldBg            = $null
+                    progressThresholds = @(
+                        @{ upTo = 50;  fg = '#0000ff' },
+                        @{ upTo = 80;  fg = '#ff00ff' },
+                        @{ upTo = 100; fg = '#00ffff' }
+                    )
+                }
+            )
+            lines       = @(
+                @{ fields = @(@{ type='progressbar'; key='context_window.used_percentage'; progressStyle='color-coded'; fg=$null; bg=$null }) }
+            )
+        } | ConvertTo-Json -Depth 10
+
+        $configPath = Join-Path $TestDrive 'statusline-config.json'
+        Set-Content -Path $configPath -Value $config -Encoding UTF8
+
+        $input = '{"context_window":{"used_percentage":20}}'
+        $result = Invoke-Main -ConfigPath $configPath -InputJson $input
+        # blue = #0000ff = RGB 0,0,255
+        $result | Should -Match '0;0;255'
     }
 }
 
