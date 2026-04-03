@@ -169,6 +169,21 @@ Describe 'Format-Field' {
         $field = [PSCustomObject]@{ type='field'; key='does.not.exist'; fg=$null; bg=$null }
         Format-Field $field $sampleData | Should -BeNullOrEmpty
     }
+
+    It 'applies pathDepth truncation to cwd field' {
+        $data  = [PSCustomObject]@{ cwd = '/home/user/myproject' }
+        $field = [PSCustomObject]@{ type='field'; key='cwd'; fg=$null; bg=$null; pathDepth=2; dataType=$null; format=$null; formatOptions=$null }
+        $result = Format-Field $field $data
+        $result | Should -Match 'user/myproject'
+        $result | Should -Match '\.\.\.'
+    }
+
+    It 'shows full path for cwd field when pathDepth is null' {
+        $data  = [PSCustomObject]@{ cwd = '/home/user/myproject' }
+        $field = [PSCustomObject]@{ type='field'; key='cwd'; fg=$null; bg=$null; pathDepth=$null; dataType=$null; format=$null; formatOptions=$null }
+        $result = Format-Field $field $data
+        $result | Should -Match '/home/user/myproject'
+    }
 }
 
 Describe 'Format-Line' {
@@ -444,6 +459,36 @@ Describe 'Invoke-Main JSON persistence' {
         # Input has 'version' (known) + 'extra' (unknown) → indicator fires
         $result = Invoke-Main -ConfigPath $indicatorConfig -InputJson '{"version":"1.0","extra":"new"}'
         $result | Should -Match '●'
+    }
+}
+
+Describe 'Truncate-Path' {
+    It 'returns full path when depth is null' {
+        Truncate-Path -Value '/home/user/myproject' -Depth $null | Should -Be '/home/user/myproject'
+    }
+
+    It 'returns full path when depth equals segment count' {
+        Truncate-Path -Value '/home/user/myproject' -Depth 3 | Should -Be '/home/user/myproject'
+    }
+
+    It 'returns full path when depth exceeds segment count' {
+        Truncate-Path -Value '/home/user/myproject' -Depth 10 | Should -Be '/home/user/myproject'
+    }
+
+    It 'truncates unix path to last 1 segment with ... prefix' {
+        Truncate-Path -Value '/home/user/myproject' -Depth 1 | Should -Be '.../myproject'
+    }
+
+    It 'truncates unix path to last 2 segments with ... prefix' {
+        Truncate-Path -Value '/home/user/myproject' -Depth 2 | Should -Be '.../user/myproject'
+    }
+
+    It 'truncates windows path to last 3 segments with ... prefix' {
+        Truncate-Path -Value 'C:\Das\ist\mein\super\langer\Pfad' -Depth 3 | Should -Be '...\super\langer\Pfad'
+    }
+
+    It 'truncates windows path to last 1 segment with ... prefix' {
+        Truncate-Path -Value 'C:\Das\ist\mein\Pfad' -Depth 1 | Should -Be '...\Pfad'
     }
 }
 

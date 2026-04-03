@@ -252,6 +252,32 @@ function Format-FieldValue {
 
 <#
 .SYNOPSIS
+    Truncates a file system path to the last N segments, prepending "..." if segments
+    were removed. Returns the original path unchanged if depth is null or the path
+    has fewer or equal segments.
+.PARAMETER Value
+    The path string to truncate.
+.PARAMETER Depth
+    Number of trailing path segments to keep. Null or 0 returns the full path.
+.OUTPUTS
+    Truncated path string.
+#>
+function Truncate-Path {
+    param(
+        [string]$Value,
+        [object]$Depth
+    )
+    if ($null -eq $Depth -or [int]$Depth -le 0) { return $Value }
+    $n   = [int]$Depth
+    $sep = if ($Value -match '\\') { '\' } else { '/' }
+    $parts = $Value -split '[/\\]' | Where-Object { $_ -ne '' }
+    if ($parts.Count -le $n) { return $Value }
+    $trailing = ($parts | Select-Object -Last $n) -join $sep
+    return '...' + $sep + $trailing
+}
+
+<#
+.SYNOPSIS
     Renders a single field configuration object as an ANSI-formatted string.
 .PARAMETER Field
     PSCustomObject with properties: type, key, text, fg, bg, progressStyle, dataType, format, formatOptions
@@ -317,6 +343,11 @@ function Format-Field {
                 Format-FieldValue -Value $value -DataType $Field.dataType -Format $Field.format -FormatOptions $Field.formatOptions
             } else {
                 "$value"
+            }
+            # Apply path truncation for path-type fields when pathDepth is configured
+            $pathKeys = @('cwd', 'workspace.current_dir', 'workspace.project_dir')
+            if ($Field.pathDepth -and $pathKeys -contains $Field.key) {
+                $formatted = Truncate-Path -Value $formatted -Depth $Field.pathDepth
             }
             return "${fgAnsi}${bgAnsi}${formatted}${resetAnsi}"
         }
