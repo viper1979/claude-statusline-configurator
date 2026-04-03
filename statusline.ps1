@@ -123,7 +123,7 @@ function Format-ProgressBar {
         [string]$Fg,
         [bool]$Brackets = $true,
         [string]$Charset = 'block',
-        [object]$Thresholds = $null   # optional array of {upTo, fg}; null = use script defaults
+        [array]$Thresholds = $null    # optional array of {upTo, fg}; null = use script defaults
     )
     $pct    = [Math]::Min(100, [Math]::Max(0, $Value))
     $filled = [int][Math]::Round($pct / 10)
@@ -145,7 +145,8 @@ function Format-ProgressBar {
     $color = if ($Fg) {
         $Fg
     } elseif ($Style -eq 'color-coded') {
-        $activeThresholds = if ($Thresholds) { $Thresholds } else { $script:PbThresholds }
+        $activeThresholds = if ($null -ne $Thresholds) { $Thresholds } else { $script:PbThresholds }
+        # Exclusive upper bound: pct=50 falls into the 50–79 range, not 0–49 (same semantics as JS renderFieldHtml)
         $matched = $activeThresholds | Where-Object { $pct -lt $_.upTo } | Select-Object -First 1
         if ($matched) { $matched.fg } else { ($activeThresholds | Select-Object -Last 1).fg }
     } else {

@@ -107,6 +107,18 @@ Describe 'Format-ProgressBar' {
         $high = Format-ProgressBar -Value 85 -Style 'color-coded' -Fg $null -Thresholds $thresholds
         $high | Should -Match '0;255;255'   # cyan = #00ffff
     }
+
+    It 'uses yellow (mid) color for value exactly 50 in color-coded style' {
+        $result = Format-ProgressBar -Value 50 -Style 'color-coded' -Fg $null
+        # pct=50 is exclusive from low threshold (upTo=50), falls into mid (upTo=80) → yellow #facc15
+        $result | Should -Match '250;204;21'    # #facc15 = RGB 250,204,21
+    }
+
+    It 'uses red (high) color for value exactly 80 in color-coded style' {
+        $result = Format-ProgressBar -Value 80 -Style 'color-coded' -Fg $null
+        # pct=80 is exclusive from mid threshold (upTo=80), falls into high (upTo=100) → red #f87171
+        $result | Should -Match '248;113;113'   # #f87171 = RGB 248,113,113
+    }
 }
 
 Describe 'Format-Field' {
