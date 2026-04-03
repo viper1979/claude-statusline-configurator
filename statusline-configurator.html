@@ -1753,6 +1753,8 @@ function formatFieldValue(value, dataType, format, formatOptions) {
  * @param {object} data  - sample data object
  * @param {object|null} previewTheme - optional theme object; its fieldFg/fieldBg are used as
  *   fallback colors when the field has no individual fg/bg set
+ * @param {number|null} previewOverride - when non-null and field.type === 'progressbar',
+ *   used as the raw value instead of reading from data. Used by the edit dialog preview.
  */
 function renderFieldHtml(field, data, previewTheme = null, previewOverride = null) {
   const fg = field.fg ?? previewTheme?.fieldFg ?? null;
