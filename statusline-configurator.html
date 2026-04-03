@@ -825,6 +825,48 @@ function saveThresholdInputs(id) {
   });
 }
 
+/**
+ * Called when the user picks a theme in the dropdown — enters preview mode.
+ * Saves current threshold inputs before switching.
+ * @param {string} id
+ */
+function onThemeSelect(id) {
+  const prevId = _themePreviewId ?? state.activeTheme;
+  if (prevId) saveThresholdInputs(prevId);
+  _themePreviewId = id;
+  renderPreview();
+  renderThemeTab();
+}
+
+/**
+ * Applies the selected theme: writes fieldFg/fieldBg onto every field object in all lines,
+ * sets state.activeTheme, and clears the preview state.
+ * @param {string} id
+ */
+function applyTheme(id) {
+  saveThresholdInputs(id);
+  const theme = state.themes.find(t => t.id === id);
+  if (!theme) return;
+  state.lines.forEach(line => {
+    line.fields.forEach(field => {
+      if (theme.fieldFg !== null) field.fg = theme.fieldFg;
+      if (theme.fieldBg !== null) field.bg = theme.fieldBg;
+    });
+  });
+  state.activeTheme = id;
+  _themePreviewId   = null;
+  render();
+}
+
+/**
+ * Cancels theme preview and re-renders from the real state.
+ */
+function cancelThemePreview() {
+  _themePreviewId = null;
+  renderPreview();
+  renderThemeTab();
+}
+
 function renderLines() {
   const container = document.getElementById('lines-container');
   container.innerHTML = '';
@@ -986,7 +1028,11 @@ function renderPreview() {
     if (line.fields.length === 0) {
       return '<span style="color:var(--color-text-muted);">(leere Zeile)</span>';
     }
-    return line.fields.map(f => renderFieldHtml(f, SAMPLE_DATA)).join('');
+    const activeThemeObj = (() => {
+      const id = _themePreviewId ?? state.activeTheme;
+      return id ? state.themes.find(t => t.id === id) || null : null;
+    })();
+    return line.fields.map(f => renderFieldHtml(f, SAMPLE_DATA, activeThemeObj)).join('');
   });
 
   out.innerHTML = lines.join('<br>');
@@ -1549,14 +1595,20 @@ const PB_CHARSETS = {
  * @param {boolean}     brackets - whether to wrap the bar in [ ]
  * @param {string}      charset  - key from PB_CHARSETS
  */
-function makeProgressBar(value, style, fg, brackets = true, charset = 'block') {
+function makeProgressBar(value, style, fg, brackets = true, charset = 'block', thresholds = null) {
   const pct    = Math.min(100, Math.max(0, value || 0));
   const filled = Math.round(pct / 10);
   const empty  = 10 - filled;
 
   const [fillCh, emptyCh] = PB_CHARSETS[charset] || PB_CHARSETS.block;
 
-  const thresholdColor = pct < 50 ? PB_COLORS.low : pct < 80 ? PB_COLORS.mid : PB_COLORS.high;
+  const activeThresholds = thresholds || [
+    { upTo: 50,  fg: PB_COLORS.low  },
+    { upTo: 80,  fg: PB_COLORS.mid  },
+    { upTo: 100, fg: PB_COLORS.high },
+  ];
+  const matched        = activeThresholds.find(t => pct < t.upTo);
+  const thresholdColor = matched ? matched.fg : activeThresholds[activeThresholds.length - 1].fg;
   const color = fg ?? (style === 'color-coded' ? thresholdColor : null);
 
   const inner = fillCh.repeat(filled) + emptyCh.repeat(empty);
@@ -1625,10 +1677,12 @@ function formatFieldValue(value, dataType, format, formatOptions) {
  * Formats a field's value for display in the preview (returns HTML string with inline styles).
  * @param {object} field - field config object from state
  * @param {object} data  - sample data object
+ * @param {object|null} previewTheme - optional theme object; its fieldFg/fieldBg are used as
+ *   fallback colors when the field has no individual fg/bg set
  */
-function renderFieldHtml(field, data) {
-  const fg = field.fg;
-  const bg = field.bg;
+function renderFieldHtml(field, data, previewTheme = null) {
+  const fg = field.fg ?? (previewTheme?.fieldFg || null);
+  const bg = field.bg ?? (previewTheme?.fieldBg || null);
   const style = [fg ? `color:${fg};` : '', bg ? `background:${bg};padding:1px 3px;border-radius:3px;` : ''].join('');
 
   if (field.type === 'static') {
@@ -1650,7 +1704,7 @@ function renderFieldHtml(field, data) {
     }
     const brackets = field.barBrackets !== false; // default true
     const charset  = field.barCharset || 'block';
-    const { bar, color } = makeProgressBar(raw, field.progressStyle || 'color-coded', fg, brackets, charset);
+    const { bar, color } = makeProgressBar(raw, field.progressStyle || 'color-coded', fg, brackets, charset, previewTheme?.progressThresholds || null);
     const colorStyle = color ? `color:${color};` : '';
     const finalStyle = [colorStyle, bg ? `background:${bg};padding:1px 3px;border-radius:3px;` : ''].join('');
     return `<span style="${finalStyle}">${bar}</span>`;
