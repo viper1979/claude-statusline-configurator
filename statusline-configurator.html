@@ -284,6 +284,20 @@
     </div>
   </div>
 
+  <!-- Emoji Picker Popup -->
+  <div id="emoji-picker"
+       style="display:none;position:fixed;z-index:300;
+              background:var(--color-surface);border:1px solid var(--color-border);
+              border-radius:var(--radius);padding:8px;width:284px;max-height:320px;
+              overflow-y:auto;box-shadow:0 4px 20px rgba(0,0,0,0.5);">
+    <input id="emoji-search" type="text" placeholder="🔍 Name oder U+1F525..."
+           oninput="filterAndRenderEmojis(this.value)"
+           style="width:100%;box-sizing:border-box;padding:5px 8px;margin-bottom:8px;
+                  border-radius:4px;border:1px solid var(--color-border);
+                  background:var(--color-surface-2);color:var(--color-text);font-size:12px;">
+    <div id="emoji-grid"></div>
+  </div>
+
 <script>
 /* Sortable.js v1.15.6 — inlined */
 /*! Sortable 1.15.6 - MIT | git://github.com/SortableJS/Sortable.git */
@@ -403,6 +417,152 @@ const SAMPLE_DATA = {
   agent: { name: '' },
   worktree: { name: '', path: '', branch: '', original_cwd: '', original_branch: 'main' },
 };
+
+// ─── Emoji list for the emoji picker (curated for Windows Terminal compatibility) ────
+
+const EMOJI_LIST = [
+  { category: 'Symbole & Zeichen', emojis: [
+    { emoji: '✓', name: 'check mark done' },
+    { emoji: '✗', name: 'cross x error wrong' },
+    { emoji: '★', name: 'star filled' },
+    { emoji: '☆', name: 'star outline' },
+    { emoji: '♦', name: 'diamond' },
+    { emoji: '♠', name: 'spade' },
+    { emoji: '♣', name: 'club' },
+    { emoji: '♥', name: 'heart love' },
+    { emoji: '©', name: 'copyright' },
+    { emoji: '®', name: 'registered trademark' },
+    { emoji: '™', name: 'trademark' },
+    { emoji: '℃', name: 'celsius temperature degree' },
+    { emoji: '℉', name: 'fahrenheit temperature degree' },
+    { emoji: '№', name: 'numero number' },
+    { emoji: 'µ', name: 'micro mu unit' },
+    { emoji: '§', name: 'section paragraph law' },
+    { emoji: '¶', name: 'pilcrow paragraph' },
+    { emoji: '∞', name: 'infinity unlimited' },
+    { emoji: '≈', name: 'approximately equal similar' },
+    { emoji: '≠', name: 'not equal unequal' },
+    { emoji: '±', name: 'plus minus' },
+    { emoji: '÷', name: 'divide division' },
+    { emoji: '×', name: 'multiply multiplication times' },
+    { emoji: '•', name: 'bullet dot point' },
+    { emoji: '◦', name: 'bullet outline circle' },
+    { emoji: '▪', name: 'square small black filled' },
+    { emoji: '▫', name: 'square small white outline' },
+  ]},
+  { category: 'Pfeile', emojis: [
+    { emoji: '→', name: 'arrow right' },
+    { emoji: '←', name: 'arrow left' },
+    { emoji: '↑', name: 'arrow up' },
+    { emoji: '↓', name: 'arrow down' },
+    { emoji: '↔', name: 'arrow left right horizontal' },
+    { emoji: '↕', name: 'arrow up down vertical' },
+    { emoji: '⇒', name: 'double arrow right bold' },
+    { emoji: '⇐', name: 'double arrow left bold' },
+    { emoji: '⇑', name: 'double arrow up bold' },
+    { emoji: '⇓', name: 'double arrow down bold' },
+    { emoji: '➜', name: 'arrow right curved' },
+    { emoji: '➔', name: 'arrow right heavy thick' },
+    { emoji: '↩', name: 'arrow return back' },
+    { emoji: '↪', name: 'arrow return forward' },
+    { emoji: '↖', name: 'arrow upper left diagonal' },
+    { emoji: '↗', name: 'arrow upper right diagonal' },
+    { emoji: '↘', name: 'arrow lower right diagonal' },
+    { emoji: '↙', name: 'arrow lower left diagonal' },
+  ]},
+  { category: 'Technik & Tools', emojis: [
+    { emoji: '⚙', name: 'gear settings config' },
+    { emoji: '🔧', name: 'wrench tool fix' },
+    { emoji: '🔨', name: 'hammer tool build' },
+    { emoji: '💻', name: 'laptop computer coding' },
+    { emoji: '🖥', name: 'desktop monitor computer screen' },
+    { emoji: '🖨', name: 'printer print' },
+    { emoji: '📡', name: 'satellite antenna signal network' },
+    { emoji: '🔌', name: 'plug power electric connect' },
+    { emoji: '💾', name: 'floppy disk save storage' },
+    { emoji: '📁', name: 'folder directory file' },
+    { emoji: '📂', name: 'folder open directory file' },
+    { emoji: '🔑', name: 'key access login auth' },
+    { emoji: '🔒', name: 'lock locked security private' },
+    { emoji: '🔓', name: 'lock unlocked security open' },
+    { emoji: '📋', name: 'clipboard copy paste' },
+    { emoji: '📌', name: 'pin pushpin location mark' },
+    { emoji: '🔍', name: 'magnifier search find zoom' },
+    { emoji: '📊', name: 'chart bar graph stats' },
+    { emoji: '📈', name: 'chart up trending increase' },
+    { emoji: '📉', name: 'chart down trending decrease' },
+    { emoji: '⌨', name: 'keyboard type input' },
+    { emoji: '🖱', name: 'mouse computer cursor' },
+    { emoji: '💿', name: 'cd disc optical media' },
+    { emoji: '📀', name: 'dvd disc optical media' },
+  ]},
+  { category: 'Energie & Wetter', emojis: [
+    { emoji: '⚡', name: 'lightning bolt electricity energy power' },
+    { emoji: '🔋', name: 'battery power charge' },
+    { emoji: '🌡', name: 'thermometer temperature hot cold' },
+    { emoji: '☀', name: 'sun sunny bright' },
+    { emoji: '🌤', name: 'sun cloud partly cloudy' },
+    { emoji: '☁', name: 'cloud cloudy overcast' },
+    { emoji: '❄', name: 'snowflake cold ice winter freeze' },
+    { emoji: '🌧', name: 'rain cloud rainy wet' },
+    { emoji: '🌊', name: 'wave ocean water sea' },
+    { emoji: '💧', name: 'droplet water rain liquid' },
+    { emoji: '🔥', name: 'fire flame hot burn' },
+    { emoji: '💨', name: 'wind air blow dash' },
+    { emoji: '🌪', name: 'tornado cyclone wind storm' },
+    { emoji: '⛅', name: 'sun cloud partly cloudy weather' },
+    { emoji: '🌈', name: 'rainbow color spectrum' },
+    { emoji: '⭐', name: 'star glowing bright yellow' },
+    { emoji: '🌙', name: 'moon night crescent' },
+    { emoji: '🌍', name: 'globe earth world' },
+  ]},
+  { category: 'Smileys & Gesten', emojis: [
+    { emoji: '😊', name: 'smile happy smiley blush' },
+    { emoji: '😀', name: 'grin happy big smile' },
+    { emoji: '😎', name: 'cool sunglasses awesome' },
+    { emoji: '😍', name: 'love heart eyes adore' },
+    { emoji: '🤔', name: 'thinking hmm wondering' },
+    { emoji: '😅', name: 'sweat smile nervous awkward' },
+    { emoji: '😂', name: 'laugh crying funny joy' },
+    { emoji: '🙁', name: 'sad frown unhappy' },
+    { emoji: '👍', name: 'thumbs up like ok good approve' },
+    { emoji: '👎', name: 'thumbs down dislike bad reject' },
+    { emoji: '✋', name: 'hand stop halt raised' },
+    { emoji: '🤝', name: 'handshake agreement deal' },
+    { emoji: '👀', name: 'eyes look see watch' },
+    { emoji: '💪', name: 'muscle strong flex power' },
+    { emoji: '⚠', name: 'warning alert caution danger' },
+    { emoji: '💡', name: 'lightbulb idea tip hint' },
+    { emoji: '❓', name: 'question mark unknown help' },
+    { emoji: '❗', name: 'exclamation mark important urgent' },
+    { emoji: '✅', name: 'check mark done ok success green' },
+    { emoji: '❌', name: 'cross red error wrong fail' },
+    { emoji: '🚀', name: 'rocket launch fast deploy' },
+    { emoji: '🎯', name: 'target bullseye goal aim' },
+    { emoji: '🏆', name: 'trophy winner champion award' },
+    { emoji: '🎉', name: 'party celebration tada' },
+    { emoji: '🔔', name: 'bell notification alert ring' },
+    { emoji: '🔕', name: 'bell off mute silence' },
+  ]},
+  { category: 'Natur', emojis: [
+    { emoji: '🌿', name: 'herb leaf plant green nature' },
+    { emoji: '🌱', name: 'seedling sprout plant grow' },
+    { emoji: '🍀', name: 'clover lucky shamrock green' },
+    { emoji: '🌲', name: 'tree forest pine evergreen' },
+    { emoji: '🌵', name: 'cactus desert dry' },
+    { emoji: '🐍', name: 'snake python reptile' },
+    { emoji: '🦊', name: 'fox animal cunning' },
+    { emoji: '🐧', name: 'penguin linux bird' },
+    { emoji: '🐳', name: 'whale docker ocean big' },
+    { emoji: '🦁', name: 'lion king animal brave' },
+    { emoji: '🐉', name: 'dragon fantasy power' },
+    { emoji: '🦋', name: 'butterfly transform change' },
+    { emoji: '🌸', name: 'cherry blossom flower spring pink' },
+    { emoji: '🍎', name: 'apple mac fruit red' },
+    { emoji: '🍕', name: 'pizza food slice' },
+    { emoji: '☕', name: 'coffee hot drink morning' },
+  ]},
+];
 
 // ─── ID generation ────────────────────────────────────────────────────────
 
@@ -1296,10 +1456,20 @@ function renderEditTabGeneral() {
       </div>
       <div>
         <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:4px;">Text</div>
-        <input id="edit-text" type="text" value="${escapeHtml(f.text || '')}"
-               style="width:100%;box-sizing:border-box;padding:6px 8px;border-radius:4px;
-                      border:1px solid var(--color-border);background:var(--color-surface-2);
-                      color:var(--color-text);font-size:12px;">
+        <div style="display:flex;gap:6px;align-items:center;">
+          <input id="edit-text" type="text" value="${escapeHtml(f.text || '')}"
+                 style="flex:1;box-sizing:border-box;padding:6px 8px;border-radius:4px;
+                        border:1px solid var(--color-border);background:var(--color-surface-2);
+                        color:var(--color-text);font-size:12px;">
+          <button type="button" data-emoji-trigger
+                  onclick="openEmojiPicker(this, 'edit-text')"
+                  title="Emoji einfügen"
+                  style="padding:5px 8px;border-radius:4px;border:1px solid var(--color-border);
+                         background:var(--color-surface-2);color:var(--color-text);
+                         cursor:pointer;font-size:14px;line-height:1;flex-shrink:0;">
+            😊
+          </button>
+        </div>
       </div>
     `;
   } else if (f.type === 'static') {
@@ -1646,6 +1816,139 @@ function updateProgressbarPreview(rawValue) {
   const displayEl = document.getElementById('edit-pb-preview-display');
   if (displayEl) displayEl.innerHTML = renderProgressbarPreview(v);
 }
+
+// ─── Emoji Picker ─────────────────────────────────────────────────────────
+
+let _emojiTargetInputId = null; // ID of the text input to insert the emoji into
+
+/**
+ * Opens the emoji picker popup, positions it below the trigger button,
+ * and focuses the search field.
+ * @param {HTMLElement} triggerBtn - the button that was clicked
+ * @param {string} targetInputId  - id of the text input to insert emojis into
+ */
+function openEmojiPicker(triggerBtn, targetInputId) {
+  _emojiTargetInputId = targetInputId;
+  const picker = document.getElementById('emoji-picker');
+  const rect   = triggerBtn.getBoundingClientRect();
+  picker.style.top  = (rect.bottom + 4) + 'px';
+  picker.style.left = Math.max(4, rect.right - 284) + 'px';
+  picker.style.display = '';
+  const searchEl = document.getElementById('emoji-search');
+  if (searchEl) { searchEl.value = ''; searchEl.focus(); }
+  filterAndRenderEmojis('');
+}
+
+/**
+ * Closes the emoji picker popup.
+ */
+function closeEmojiPicker() {
+  document.getElementById('emoji-picker').style.display = 'none';
+  _emojiTargetInputId = null;
+}
+
+/**
+ * Filters the EMOJI_LIST by name (case-insensitive substring) or by Unicode
+ * codepoint (e.g. "1F525" or "U+1F525"), then renders the result into
+ * #emoji-grid. A valid codepoint that is not in the curated list is shown
+ * as a single result via String.fromCodePoint().
+ * @param {string} query - search query from the input field
+ */
+function filterAndRenderEmojis(query) {
+  const grid = document.getElementById('emoji-grid');
+  if (!grid) return;
+
+  const q = (query || '').trim();
+
+  // Codepoint search: "1F525" or "U+1F525"
+  const cpMatch = q.match(/^(?:U\+)?([0-9A-Fa-f]{4,6})$/);
+  if (cpMatch) {
+    try {
+      const cp   = parseInt(cpMatch[1], 16);
+      const ch   = String.fromCodePoint(cp);
+      grid.innerHTML = renderEmojiGrid([{ category: 'Codepoint', emojis: [{ emoji: ch, name: q }] }]);
+    } catch {
+      grid.innerHTML = '<div style="font-size:11px;color:var(--color-text-muted);padding:4px;">Ungültiger Codepoint</div>';
+    }
+    return;
+  }
+
+  // Name search
+  const lower = q.toLowerCase();
+  const filtered = EMOJI_LIST.map(cat => ({
+    category: cat.category,
+    emojis: q
+      ? cat.emojis.filter(e => e.name.toLowerCase().includes(lower))
+      : cat.emojis,
+  })).filter(cat => cat.emojis.length > 0);
+
+  grid.innerHTML = filtered.length > 0
+    ? renderEmojiGrid(filtered)
+    : '<div style="font-size:11px;color:var(--color-text-muted);padding:4px;">Keine Ergebnisse</div>';
+}
+
+/**
+ * Renders category headers and emoji buttons for the given filtered list.
+ * @param {Array} categories - array of { category, emojis } objects
+ * @returns {string} HTML string
+ */
+function renderEmojiGrid(categories) {
+  return categories.map(cat => `
+    <div style="font-size:10px;color:var(--color-text-muted);margin:6px 0 3px;text-transform:uppercase;
+                letter-spacing:0.05em;">${escapeHtml(cat.category)}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:2px;">
+      ${cat.emojis.map(e => `
+        <button type="button"
+                title="${escapeHtml(e.name)}"
+                onclick="insertEmojiAtCursor('${e.emoji.replace(/'/g, "\\'")}')"
+                style="width:28px;height:28px;border:none;background:none;cursor:pointer;
+                       font-size:16px;border-radius:3px;line-height:1;
+                       transition:background 0.1s;"
+                onmouseover="this.style.background='var(--color-surface-2)'"
+                onmouseout="this.style.background='none'"
+                >${e.emoji}</button>
+      `).join('')}
+    </div>
+  `).join('');
+}
+
+/**
+ * Inserts the given emoji into the target text input at the current cursor
+ * position, then closes the picker.
+ * @param {string} emoji - the emoji character to insert
+ */
+function insertEmojiAtCursor(emoji) {
+  const input = _emojiTargetInputId
+    ? document.getElementById(_emojiTargetInputId)
+    : null;
+  if (input) {
+    const start = input.selectionStart ?? input.value.length;
+    const end   = input.selectionEnd   ?? input.value.length;
+    input.value = input.value.slice(0, start) + emoji + input.value.slice(end);
+    const newPos = start + emoji.length;
+    input.setSelectionRange(newPos, newPos);
+    input.focus();
+  }
+  closeEmojiPicker();
+}
+
+// Close picker on outside click
+document.addEventListener('click', e => {
+  const picker = document.getElementById('emoji-picker');
+  if (picker && picker.style.display !== 'none') {
+    if (!picker.contains(e.target) && !e.target.closest('[data-emoji-trigger]')) {
+      closeEmojiPicker();
+    }
+  }
+});
+
+// Close picker on Escape key
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    const picker = document.getElementById('emoji-picker');
+    if (picker && picker.style.display !== 'none') closeEmojiPicker();
+  }
+});
 
 // ─── Progress bar rendering ───────────────────────────────────────────────
 
