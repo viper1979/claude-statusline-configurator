@@ -574,7 +574,7 @@ function deleteCustomField(cfId) {
 
 // ─── State ────────────────────────────────────────────────────────────────
 
-const state = { lines: [], customFields: [] };
+const state = { lines: [], customFields: [], themes: [], activeTheme: null };
 
 // ─── Line management ──────────────────────────────────────────────────────
 
@@ -828,7 +828,9 @@ function buildExportJson() {
   // All keys from AVAILABLE_FIELDS — used by PS for new_fields_indicator
   const knownKeys = AVAILABLE_FIELDS.flatMap(g => g.items.map(i => i.key));
 
-  return JSON.stringify({ lines, customFields, knownKeys }, null, 2);
+  const themes      = state.themes;
+  const activeTheme = state.activeTheme;
+  return JSON.stringify({ activeTheme, themes, lines, customFields, knownKeys }, null, 2);
 }
 
 function updateExportTextarea() {
@@ -930,6 +932,17 @@ function loadConfig(json) {
     fg:    cf.fg    || null,
     bg:    cf.bg    || null,
   }));
+
+  state.themes      = (json.themes || []).map(t => ({
+    id:                  t.id || generateId(),
+    name:                t.name || 'Theme',
+    fieldFg:             t.fieldFg || null,
+    fieldBg:             t.fieldBg || null,
+    progressThresholds:  Array.isArray(t.progressThresholds)
+      ? t.progressThresholds.map(pt => ({ upTo: pt.upTo, fg: pt.fg }))
+      : [{ upTo: 50, fg: '#4ade80' }, { upTo: 80, fg: '#facc15' }, { upTo: 100, fg: '#f87171' }],
+  }));
+  state.activeTheme = json.activeTheme || null;
 
   // knownKeys: not stored in state — rebuilt on every export from AVAILABLE_FIELDS
 
