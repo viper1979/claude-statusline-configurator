@@ -413,9 +413,12 @@ function generateId() { return 'id-' + (++_idCounter); }
  * Synchronises _idCounter to the highest numeric suffix found across all IDs
  * in the loaded state. Call after loadConfig() to prevent ID collisions when
  * new fields are added after loading a saved configuration.
- * @param {object} state
  */
-function syncIdCounter(state) {
+function syncIdCounter() {
+  // Scan all collections defensively — lines/fields already have fresh IDs from loadConfig,
+  // but customFields and themes may preserve saved id-N values that are numerically ahead
+  // of the counter. Scanning everything ensures we never miss an ID regardless of future
+  // mapping changes.
   const allIds = [
     ...state.lines.map(l => l.id),
     ...state.lines.flatMap(l => l.fields.map(f => f.id)),
@@ -1203,7 +1206,7 @@ function loadConfig(json) {
 
   // knownKeys: not stored in state — rebuilt on every export from AVAILABLE_FIELDS
 
-  syncIdCounter(state);
+  syncIdCounter();
   render();
 }
 
