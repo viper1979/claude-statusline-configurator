@@ -84,9 +84,45 @@
 
     /* ---------- Right panel ---------- */
     .config-panel {
-      padding: 16px;
-      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      min-height: 0;
     }
+
+    .config-tabs-bar {
+      display: flex;
+      border-bottom: 1px solid var(--color-border);
+      flex-shrink: 0;
+      background: var(--color-surface);
+    }
+
+    .config-tab-btn {
+      padding: 10px 16px;
+      font-size: 12px;
+      font-weight: 500;
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: var(--color-text-muted);
+      cursor: pointer;
+      transition: color 0.12s;
+    }
+
+    .config-tab-btn:hover { color: var(--color-text); }
+
+    .config-tab-btn.active {
+      color: var(--color-accent);
+      border-bottom-color: var(--color-accent);
+    }
+
+    .config-tabs-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+    }
+
+    /* .preview-section already has flex-shrink: 0, just needs to be inside config-panel */
 
     /* ---------- Preview ---------- */
     .preview-section {
@@ -182,16 +218,23 @@
     </aside>
 
     <main class="config-panel">
-      <div class="panel-title">Konfiguration</div>
-      <div id="lines-container"></div>
-      <button class="btn" id="btn-add-line" onclick="addLine()" style="margin-top:8px;">+ Zeile hinzufügen</button>
+      <div class="config-tabs-bar">
+        <button class="config-tab-btn active" data-tab="lines" onclick="switchMainTab('lines')">Zeilen</button>
+        <button class="config-tab-btn" data-tab="theme" onclick="switchMainTab('theme')">Theme</button>
+      </div>
+      <div class="config-tabs-content">
+        <div class="main-tab-content" id="main-tab-lines">
+          <div id="lines-container"></div>
+          <button class="btn" id="btn-add-line" onclick="addLine()" style="margin-top:8px;">+ Zeile hinzufügen</button>
+        </div>
+        <div class="main-tab-content" id="main-tab-theme" style="display:none;"></div>
+      </div>
+      <section class="preview-section">
+        <div class="panel-title" style="margin-bottom:8px;">Vorschau</div>
+        <div class="preview-output" id="preview-output" aria-live="polite"></div>
+      </section>
     </main>
   </div>
-
-  <section class="preview-section">
-    <div class="panel-title" style="margin-bottom:8px;">Vorschau</div>
-    <div class="preview-output" id="preview-output" aria-live="polite"></div>
-  </section>
 
   <section class="export-section">
     <div class="panel-title">Export / Import</div>
@@ -568,6 +611,22 @@ function render() {
   document.getElementById('btn-add-line').disabled = state.lines.length >= 10;
   renderCustomFieldsGroup();
   initSortable(); // must run after all palette DOM (incl. custom-fields-list) is built
+}
+
+// ─── Main tab switching ───────────────────────────────────────────────────
+
+/**
+ * Switches between 'lines' and 'theme' tabs in the config panel.
+ * @param {string} tab - 'lines' | 'theme'
+ */
+function switchMainTab(tab) {
+  document.querySelectorAll('.config-tab-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tab);
+  });
+  document.querySelectorAll('.main-tab-content').forEach(el => {
+    el.style.display = el.id === `main-tab-${tab}` ? '' : 'none';
+  });
+  if (tab === 'theme') renderThemeTab();
 }
 
 function renderLines() {
