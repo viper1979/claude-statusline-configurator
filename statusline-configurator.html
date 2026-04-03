@@ -409,6 +409,27 @@ const SAMPLE_DATA = {
 let _idCounter = 0;
 function generateId() { return 'id-' + (++_idCounter); }
 
+/**
+ * Synchronises _idCounter to the highest numeric suffix found across all IDs
+ * in the loaded state. Call after loadConfig() to prevent ID collisions when
+ * new fields are added after loading a saved configuration.
+ * @param {object} state
+ */
+function syncIdCounter(state) {
+  const allIds = [
+    ...state.lines.map(l => l.id),
+    ...state.lines.flatMap(l => l.fields.map(f => f.id)),
+    ...state.customFields.map(cf => cf.id),
+    ...state.themes.map(t => t.id),
+  ];
+  let max = _idCounter;
+  for (const id of allIds) {
+    const match = id && id.match(/^id-(\d+)$/);
+    if (match) max = Math.max(max, parseInt(match[1], 10));
+  }
+  _idCounter = max;
+}
+
 // ─── Left panel rendering ─────────────────────────────────────────────────
 
 function renderFieldsPanel() {
@@ -1182,6 +1203,7 @@ function loadConfig(json) {
 
   // knownKeys: not stored in state — rebuilt on every export from AVAILABLE_FIELDS
 
+  syncIdCounter(state);
   render();
 }
 
