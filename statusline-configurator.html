@@ -1216,11 +1216,11 @@ function renderPreview() {
       return '<span style="color:var(--color-text-muted);">(leere Zeile)</span>';
     }
     return line.fields.map(f => {
-      // When the edit dialog is open for a progressbar and previewValue is set,
-      // reflect the preview value in the main preview as well.
-      const previewOverride = (_editDraft && _editDraft.id === f.id && _editDraft.previewValue !== undefined)
-        ? _editDraft.previewValue
-        : null;
+      // Use _editDraft.previewValue while the dialog is open (live updates), fall back to
+      // f.previewValue once the dialog is saved and closed so the chosen value persists.
+      const previewOverride = (_editDraft && _editDraft.id === f.id)
+        ? (_editDraft.previewValue ?? f.previewValue ?? null)
+        : (f.previewValue ?? null);
       return renderFieldHtml(f, SAMPLE_DATA, activeThemeObj, previewOverride);
     }).join('');
   });
@@ -1734,8 +1734,9 @@ function renderEditTabColors() {
 
 function saveEditDialog() {
   if (!_editCtx || !_editDraft) return;
-  // previewValue is ephemeral UI state — never persisted to the real field objects
-  delete _editDraft.previewValue;
+  // previewValue stays in state so the main preview keeps the chosen value after dialog close.
+  // buildExportJson() uses an explicit allowlist and never reads previewValue, so it is
+  // never written to the config file.
   const { source, lineId } = _editCtx;
 
   // Read Allgemein tab values into draft
