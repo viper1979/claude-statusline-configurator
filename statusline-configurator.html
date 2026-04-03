@@ -1024,14 +1024,14 @@ function renderPreview() {
     return;
   }
 
+  const activeThemeObj = (() => {
+    const id = _themePreviewId ?? state.activeTheme;
+    return id ? state.themes.find(t => t.id === id) || null : null;
+  })();
   const lines = state.lines.map(line => {
     if (line.fields.length === 0) {
       return '<span style="color:var(--color-text-muted);">(leere Zeile)</span>';
     }
-    const activeThemeObj = (() => {
-      const id = _themePreviewId ?? state.activeTheme;
-      return id ? state.themes.find(t => t.id === id) || null : null;
-    })();
     return line.fields.map(f => renderFieldHtml(f, SAMPLE_DATA, activeThemeObj)).join('');
   });
 
@@ -1681,8 +1681,8 @@ function formatFieldValue(value, dataType, format, formatOptions) {
  *   fallback colors when the field has no individual fg/bg set
  */
 function renderFieldHtml(field, data, previewTheme = null) {
-  const fg = field.fg ?? (previewTheme?.fieldFg || null);
-  const bg = field.bg ?? (previewTheme?.fieldBg || null);
+  const fg = field.fg ?? previewTheme?.fieldFg ?? null;
+  const bg = field.bg ?? previewTheme?.fieldBg ?? null;
   const style = [fg ? `color:${fg};` : '', bg ? `background:${bg};padding:1px 3px;border-radius:3px;` : ''].join('');
 
   if (field.type === 'static') {
