@@ -200,9 +200,10 @@ function Format-ProgressBar {
 #>
 function Format-Duration {
     param(
-        [long]$TotalSeconds,
+        [object]$TotalSeconds,   # object to prevent PowerShell binding error on non-numeric input
         [string]$Format
     )
+    $TotalSeconds = try { [long][double]$TotalSeconds } catch { return '?' }
     if ($TotalSeconds -lt 0) { $TotalSeconds = 0 }
     $totalMinutes = [long]($TotalSeconds / 60)
     $hours        = [long]($totalMinutes / 60)
@@ -374,7 +375,12 @@ function Format-Field {
             $value = Get-NestedValue $Data $Field.key
             if ($null -eq $value -or "$value" -eq '') { return '' }
             $formatted = if ($Field.dataType) {
-                Format-FieldValue -Value $value -DataType $Field.dataType -Format $Field.format -FormatOptions $Field.formatOptions
+                try {
+                    Format-FieldValue -Value $value -DataType $Field.dataType -Format $Field.format -FormatOptions $Field.formatOptions
+                } catch {
+                    # Misconfigured dataType for this field — return raw value rather than crashing
+                    "$value"
+                }
             } else {
                 "$value"
             }
