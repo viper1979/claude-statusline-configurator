@@ -632,8 +632,199 @@ function switchMainTab(tab) {
   if (tab === 'theme') renderThemeTab();
 }
 
-// Stub — replaced in Task 6 (Theming Tab UI)
-function renderThemeTab() {}
+let _themePreviewId = null; // id of theme currently being previewed (null = use activeTheme)
+
+/**
+ * Renders the Theme tab content into #main-tab-theme.
+ * Called each time the Theme tab is activated or state.themes changes.
+ */
+function renderThemeTab() {
+  const el = document.getElementById('main-tab-theme');
+  if (!el) return;
+
+  const themes    = state.themes;
+  const activeId  = state.activeTheme;
+  const previewId = _themePreviewId;
+  const currentId = previewId ?? activeId;
+  const theme     = themes.find(t => t.id === currentId) || null;
+
+  const thresholdRows = theme
+    ? theme.progressThresholds.map((pt, i) => `
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+          <span style="font-size:12px;color:var(--color-text-muted);">bis</span>
+          <input type="number" class="theme-threshold-pct" data-index="${i}" min="1" max="100" value="${pt.upTo}"
+                 style="width:56px;padding:4px 6px;border-radius:4px;border:1px solid var(--color-border);
+                        background:var(--color-surface-2);color:var(--color-text);font-size:12px;">
+          <span style="font-size:12px;color:var(--color-text-muted);">%</span>
+          <input type="color" class="theme-threshold-fg" data-index="${i}" value="${pt.fg || '#ffffff'}"
+                 style="width:36px;height:28px;border:1px solid var(--color-border);border-radius:4px;padding:2px;cursor:pointer;">
+          <button class="btn-icon" onclick="removeThreshold(${i})" title="Entfernen"
+                  style="margin-left:auto;" ${theme.progressThresholds.length <= 1 ? 'disabled' : ''}>✕</button>
+        </div>
+      `).join('')
+    : '';
+
+  el.innerHTML = themes.length === 0
+    ? `
+        <p style="font-size:12px;color:var(--color-text-muted);margin-bottom:12px;">
+          Noch kein Theme vorhanden.
+        </p>
+        <button class="btn" onclick="createTheme()">+ Neues Theme erstellen</button>
+      `
+    : `
+        <div style="margin-bottom:14px;">
+          <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:4px;">Theme</div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <select id="theme-select"
+                    style="flex:1;padding:6px 8px;border-radius:4px;border:1px solid var(--color-border);
+                           background:var(--color-surface-2);color:var(--color-text);font-size:12px;"
+                    onchange="onThemeSelect(this.value)">
+              ${themes.map(t => `<option value="${t.id}" ${t.id === currentId ? 'selected' : ''}>${escapeHtml(t.name)}</option>`).join('')}
+            </select>
+            <button class="btn" onclick="createTheme()">+ Neu</button>
+            <button class="btn btn-danger" onclick="deleteTheme('${escapeHtml(currentId || '')}')"
+                    ${!currentId || currentId === activeId || themes.length <= 1 ? 'disabled' : ''}>Löschen</button>
+          </div>
+        </div>
+        ${theme ? `
+          <div style="margin-bottom:14px;">
+            <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:4px;">Name</div>
+            <input id="theme-name" type="text" value="${escapeHtml(theme.name)}"
+                   style="width:100%;box-sizing:border-box;padding:6px 8px;border-radius:4px;
+                          border:1px solid var(--color-border);background:var(--color-surface-2);
+                          color:var(--color-text);font-size:12px;"
+                   oninput="renameTheme('${escapeHtml(theme.id)}', this.value)">
+          </div>
+          <div style="margin-bottom:14px;">
+            <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:6px;">Felder-Farben</div>
+            <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+              <label style="display:flex;align-items:center;gap:6px;font-size:12px;">
+                <span>FG</span>
+                <input type="color" id="theme-fg" value="${theme.fieldFg || '#e0e0e0'}"
+                       style="width:36px;height:28px;border:1px solid var(--color-border);border-radius:4px;padding:2px;cursor:pointer;"
+                       oninput="updateThemeColor('${escapeHtml(theme.id)}', 'fieldFg', this.value)">
+                <button class="btn-icon" onclick="updateThemeColor('${escapeHtml(theme.id)}', 'fieldFg', null)" title="Keine FG-Farbe">✕</button>
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12px;">
+                <span>BG</span>
+                <input type="color" id="theme-bg" value="${theme.fieldBg || '#161616'}"
+                       style="width:36px;height:28px;border:1px solid var(--color-border);border-radius:4px;padding:2px;cursor:pointer;"
+                       oninput="updateThemeColor('${escapeHtml(theme.id)}', 'fieldBg', this.value)">
+                <button class="btn-icon" onclick="updateThemeColor('${escapeHtml(theme.id)}', 'fieldBg', null)" title="Kein BG">✕</button>
+              </label>
+            </div>
+          </div>
+          <div style="margin-bottom:14px;">
+            <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:6px;">Progressbar-Schwellen</div>
+            <div id="theme-thresholds">${thresholdRows}</div>
+            <button class="btn" style="margin-top:6px;" onclick="addThreshold('${escapeHtml(theme.id)}')">+ Schwelle hinzufügen</button>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:4px;">
+            <button class="btn btn-primary" onclick="applyTheme('${escapeHtml(theme.id)}')">Anwenden</button>
+            <button class="btn" onclick="cancelThemePreview()">Abbrechen</button>
+          </div>
+        ` : ''}
+      `;
+}
+
+/**
+ * Creates a new theme with default values and makes it the current preview.
+ */
+function createTheme() {
+  const id = generateId();
+  state.themes.push({
+    id,
+    name:               'Neues Theme',
+    fieldFg:            null,
+    fieldBg:            null,
+    progressThresholds: [
+      { upTo: 50,  fg: '#4ade80' },
+      { upTo: 80,  fg: '#facc15' },
+      { upTo: 100, fg: '#f87171' },
+    ],
+  });
+  _themePreviewId = id;
+  renderThemeTab();
+  updateExportTextarea();
+}
+
+/**
+ * Deletes a theme by id. Cannot delete the active theme or last remaining theme.
+ * @param {string} id
+ */
+function deleteTheme(id) {
+  if (id === state.activeTheme || state.themes.length <= 1) return;
+  state.themes = state.themes.filter(t => t.id !== id);
+  if (_themePreviewId === id) _themePreviewId = null;
+  renderThemeTab();
+  updateExportTextarea();
+}
+
+/**
+ * Updates a theme's name inline.
+ * @param {string} id
+ * @param {string} name
+ */
+function renameTheme(id, name) {
+  const t = state.themes.find(t => t.id === id);
+  if (t) t.name = name;
+  updateExportTextarea();
+}
+
+/**
+ * Updates a theme's fieldFg or fieldBg color.
+ * @param {string} id
+ * @param {'fieldFg'|'fieldBg'} prop
+ * @param {string|null} value
+ */
+function updateThemeColor(id, prop, value) {
+  const t = state.themes.find(t => t.id === id);
+  if (t) { t[prop] = value; renderPreview(); renderThemeTab(); }
+  updateExportTextarea();
+}
+
+/**
+ * Adds a new threshold row to a theme.
+ * @param {string} id
+ */
+function addThreshold(id) {
+  const t = state.themes.find(t => t.id === id);
+  if (!t) return;
+  t.progressThresholds.push({ upTo: 100, fg: '#ffffff' });
+  renderThemeTab();
+  updateExportTextarea();
+}
+
+/**
+ * Removes a threshold row by index from the currently previewed/selected theme.
+ * @param {number} index
+ */
+function removeThreshold(index) {
+  const id = _themePreviewId ?? state.activeTheme;
+  const t  = state.themes.find(t => t.id === id);
+  if (!t || t.progressThresholds.length <= 1) return;
+  t.progressThresholds.splice(index, 1);
+  renderThemeTab();
+  updateExportTextarea();
+}
+
+/**
+ * Saves all threshold input values from the DOM back into the theme object.
+ * Called before apply/preview operations that need up-to-date threshold data.
+ * @param {string} id
+ */
+function saveThresholdInputs(id) {
+  const t = state.themes.find(t => t.id === id);
+  if (!t) return;
+  const pctInputs = document.querySelectorAll('.theme-threshold-pct');
+  const fgInputs  = document.querySelectorAll('.theme-threshold-fg');
+  pctInputs.forEach((el, i) => {
+    if (t.progressThresholds[i]) t.progressThresholds[i].upTo = parseInt(el.value, 10) || 100;
+  });
+  fgInputs.forEach((el, i) => {
+    if (t.progressThresholds[i]) t.progressThresholds[i].fg = el.value;
+  });
+}
 
 function renderLines() {
   const container = document.getElementById('lines-container');
