@@ -1326,7 +1326,24 @@ function renderEditTabGeneral() {
       ['square', '■□', 'Quadrat'],
       ['ascii',  '#-', 'ASCII'],
     ];
+    const initialPreviewValue = f.previewValue ?? Math.round(getNestedValue(SAMPLE_DATA, f.key) ?? 50);
     el.innerHTML = `
+      <div style="margin-bottom:12px;display:flex;align-items:center;gap:10px;">
+        <div>
+          <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:4px;">Vorschau-Wert (%)</div>
+          <input type="number" id="edit-pb-preview-value" min="0" max="100" step="1"
+            value="${initialPreviewValue}"
+            oninput="updateProgressbarPreview(this.value)"
+            style="width:72px;padding:4px 6px;border-radius:4px;border:1px solid var(--color-border);
+              background:var(--color-surface-2);color:var(--color-text);font-size:12px;">
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:4px;">Vorschau</div>
+          <span id="edit-pb-preview-display" style="font-family:monospace;font-size:12px;">
+            ${renderProgressbarPreview(initialPreviewValue)}
+          </span>
+        </div>
+      </div>
       <div style="margin-bottom:10px;">
         <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:6px;">Farbe</div>
         <label style="display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:4px;cursor:pointer;">
@@ -1530,6 +1547,8 @@ function renderEditTabColors() {
 
 function saveEditDialog() {
   if (!_editCtx || !_editDraft) return;
+  // previewValue is ephemeral UI state — never persisted to the real field objects
+  delete _editDraft.previewValue;
   const { source, lineId } = _editCtx;
 
   // Read Allgemein tab values into draft
@@ -1597,6 +1616,35 @@ function saveEditDialog() {
 
   closeEditDialog();
   render();
+}
+
+/**
+ * Renders the edit draft field as a progressbar HTML snippet using the given
+ * preview value. Used by the dialog's inline preview. Returns an empty string
+ * if no draft is active.
+ * @param {number} value - 0 to 100
+ * @returns {string} HTML snippet
+ */
+function renderProgressbarPreview(value) {
+  if (!_editDraft) return '';
+  const activeThemeObj = (() => {
+    const id = _themePreviewId ?? state.activeTheme;
+    return id ? state.themes.find(t => t.id === id) || null : null;
+  })();
+  return renderFieldHtml(_editDraft, SAMPLE_DATA, activeThemeObj, value);
+}
+
+/**
+ * Called by the preview-value number input in the progressbar edit dialog.
+ * Clamps the value to [0, 100], stores it in _editDraft.previewValue, and
+ * updates the inline preview span.
+ * @param {string|number} rawValue - value from the input element
+ */
+function updateProgressbarPreview(rawValue) {
+  const v = Math.min(100, Math.max(0, parseInt(rawValue, 10) || 0));
+  if (_editDraft) _editDraft.previewValue = v;
+  const displayEl = document.getElementById('edit-pb-preview-display');
+  if (displayEl) displayEl.innerHTML = renderProgressbarPreview(v);
 }
 
 // ─── Progress bar rendering ───────────────────────────────────────────────
@@ -1706,7 +1754,7 @@ function formatFieldValue(value, dataType, format, formatOptions) {
  * @param {object|null} previewTheme - optional theme object; its fieldFg/fieldBg are used as
  *   fallback colors when the field has no individual fg/bg set
  */
-function renderFieldHtml(field, data, previewTheme = null) {
+function renderFieldHtml(field, data, previewTheme = null, previewOverride = null) {
   const fg = field.fg ?? previewTheme?.fieldFg ?? null;
   const bg = field.bg ?? previewTheme?.fieldBg ?? null;
   const style = [fg ? `color:${fg};` : '', bg ? `background:${bg};padding:1px 3px;` : ''].join('');
@@ -1719,7 +1767,10 @@ function renderFieldHtml(field, data, previewTheme = null) {
     return `<span style="${style}">● Neue Felder (Indikator)</span>`;
   }
 
-  const raw = getNestedValue(data, field.key);
+  // Use previewOverride as raw value for progressbar when set (e.g. from edit dialog preview)
+  const raw = (field.type === 'progressbar' && previewOverride !== null)
+    ? previewOverride
+    : getNestedValue(data, field.key);
   if (raw === undefined || raw === null || raw === '') {
     return '';
   }
