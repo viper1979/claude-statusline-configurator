@@ -1215,7 +1215,14 @@ function renderPreview() {
     if (line.fields.length === 0) {
       return '<span style="color:var(--color-text-muted);">(leere Zeile)</span>';
     }
-    return line.fields.map(f => renderFieldHtml(f, SAMPLE_DATA, activeThemeObj)).join('');
+    return line.fields.map(f => {
+      // When the edit dialog is open for a progressbar and previewValue is set,
+      // reflect the preview value in the main preview as well.
+      const previewOverride = (_editDraft && _editDraft.id === f.id && _editDraft.previewValue !== undefined)
+        ? _editDraft.previewValue
+        : null;
+      return renderFieldHtml(f, SAMPLE_DATA, activeThemeObj, previewOverride);
+    }).join('');
   });
 
   out.innerHTML = lines.join('<br>');
@@ -1825,6 +1832,8 @@ function updateProgressbarPreview(rawValue) {
   if (_editDraft) _editDraft.previewValue = v;
   const displayEl = document.getElementById('edit-pb-preview-display');
   if (displayEl) displayEl.innerHTML = renderProgressbarPreview(v);
+  // Also update the main preview so the progressbar there reflects the chosen value
+  renderPreview();
 }
 
 // ─── Emoji Picker ─────────────────────────────────────────────────────────
