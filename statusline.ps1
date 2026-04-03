@@ -5,7 +5,26 @@
 Set-StrictMode -Off
 $ErrorActionPreference = 'SilentlyContinue'
 
-# Functions are added in Tasks 11-14
+<#
+.SYNOPSIS
+    Writes a diagnostic message to statusline-error.log next to the script,
+    and returns a short error string for display in the status bar.
+.PARAMETER Message
+    Human-readable description of what went wrong.
+.OUTPUTS
+    Short indicator string like "[❌ statusline] Config not found".
+#>
+function Write-StatuslineError {
+    param([string]$Message)
+    try {
+        $logPath = Join-Path $PSScriptRoot 'statusline-error.log'
+        $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+        Add-Content -Path $logPath -Value "[$timestamp] $Message" -Encoding UTF8
+    } catch {
+        # Ignore log write failures
+    }
+    return "[❌ statusline] $Message"
+}
 
 <#
 .SYNOPSIS
@@ -98,7 +117,14 @@ $script:PbThresholds = @(
 )
 
 # Field keys that contain file-system paths (used by Truncate-Path in Format-Field)
-$script:PathKeys = @('cwd', 'workspace.current_dir', 'workspace.project_dir')
+$script:PathKeys = @(
+    'cwd',
+    'transcript_path',
+    'workspace.current_dir',
+    'workspace.project_dir',
+    'worktree.path',
+    'worktree.original_cwd'
+)
 
 <#
 .SYNOPSIS
@@ -401,15 +427,33 @@ function Invoke-Main {
     )
 
     # Read config
-    if (-not (Test-Path $ConfigPath)) { return '' }
-    $configJson = try { Get-Content -Path $ConfigPath -Raw -Encoding UTF8 } catch { return '' }
-    $config     = try { $configJson | ConvertFrom-Json } catch { return '' }
+    if (-not (Test-Path $ConfigPath)) {
+        return Write-StatuslineError "Config not found: $ConfigPath"
+    }
+    $configJson = try {
+        Get-Content -Path $ConfigPath -Raw -Encoding UTF8
+    } catch {
+        return Write-StatuslineError "Cannot read config: $_"
+    }
+    if ([string]::IsNullOrWhiteSpace($configJson)) {
+        return Write-StatuslineError "Config file is empty: $ConfigPath"
+    }
+    $config = try {
+        $configJson | ConvertFrom-Json
+    } catch {
+        return Write-StatuslineError "Config JSON invalid: $_"
+    }
 
     # Read input JSON (from parameter or stdin)
     if (-not $InputJson) {
         $InputJson = try { [Console]::In.ReadToEnd() } catch { '{}' }
+        if ([string]::IsNullOrWhiteSpace($InputJson)) { $InputJson = '{}' }
     }
-    $data = try { $InputJson | ConvertFrom-Json } catch { return '' }
+    $data = try {
+        $InputJson | ConvertFrom-Json
+    } catch {
+        return Write-StatuslineError "Input JSON invalid: $_"
+    }
 
     # Persist the received payload for field discovery (fail silently)
     try {
@@ -438,6 +482,10 @@ function Invoke-Main {
 # ─── Script entry point ───────────────────────────────────────────────────
 # Only run when invoked directly (not when dot-sourced by tests)
 if ($MyInvocation.InvocationName -ne '.') {
-    $result = Invoke-Main
+    $result = try {
+        Invoke-Main
+    } catch {
+        Write-StatuslineError "Unexpected error: $_"
+    }
     if ($result) { Write-Output $result }
 }

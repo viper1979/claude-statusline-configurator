@@ -260,21 +260,24 @@ Describe 'Invoke-Main' {
         $result | Should -Match 'Sonnet'
     }
 
-    It 'returns empty string when config file does not exist' {
+    It 'returns error message when config file does not exist' {
         $result = Invoke-Main -ConfigPath 'C:\nonexistent\config.json' -InputJson '{}'
-        $result | Should -BeNullOrEmpty
+        $result | Should -Match '\[.*statusline\]'
+        $result | Should -Match 'Config not found'
     }
 
-    It 'returns empty string when input JSON is malformed' {
+    It 'returns error message when input JSON is malformed' {
         $result = Invoke-Main -ConfigPath $configPath -InputJson 'not json'
-        $result | Should -BeNullOrEmpty
+        $result | Should -Match '\[.*statusline\]'
+        $result | Should -Match 'Input JSON invalid'
     }
 
-    It 'returns empty string when config JSON is malformed' {
+    It 'returns error message when config JSON is malformed' {
         $badConfig = Join-Path $TestDrive 'bad-config.json'
         Set-Content -Path $badConfig -Value 'not json' -Encoding UTF8
         $result = Invoke-Main -ConfigPath $badConfig -InputJson '{}'
-        $result | Should -BeNullOrEmpty
+        $result | Should -Match '\[.*statusline\]'
+        $result | Should -Match 'Config JSON invalid'
     }
 
     It 'outputs empty field as empty string without crashing' {
