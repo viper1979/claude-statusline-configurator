@@ -418,7 +418,7 @@ const SAMPLE_DATA = {
   worktree: { name: '', path: '', branch: '', original_cwd: '', original_branch: 'main' },
 };
 
-// ─── Emoji list for the emoji picker (curated for Windows Terminal compatibility) ────
+// ─── Emoji list for the emoji picker (~130 emojis, curated for Windows Terminal compatibility) ────
 
 const EMOJI_LIST = [
   { category: 'Symbole & Zeichen', emojis: [
@@ -1900,7 +1900,8 @@ function renderEmojiGrid(categories) {
       ${cat.emojis.map(e => `
         <button type="button"
                 title="${escapeHtml(e.name)}"
-                onclick="insertEmojiAtCursor('${e.emoji.replace(/'/g, "\\'")}')"
+                data-emoji="${escapeHtml(e.emoji)}"
+                onclick="insertEmojiAtCursor(this.dataset.emoji)"
                 style="width:28px;height:28px;border:none;background:none;cursor:pointer;
                        font-size:16px;border-radius:3px;line-height:1;
                        transition:background 0.1s;"
