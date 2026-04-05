@@ -387,6 +387,60 @@ Describe 'Format-FieldValue' {
             Should -Be '1h 1m'
     }
 
+    It 'formats duration_ms 5000000 ms as hours format: 1h 23m' {
+        # 5000000 ms = 5000 s = 83m = 1h 23m
+        Format-FieldValue -Value 5000000 -DataType 'duration_ms' -Format 'hours' -FormatOptions $null |
+            Should -Be '1h 23m'
+    }
+
+    It 'formats duration_ms 30000 ms as short format: 0h 0m' {
+        # 30000 ms = 30 s — less than 1 minute, displays as 0h 0m
+        Format-FieldValue -Value 30000 -DataType 'duration_ms' -Format 'short' -FormatOptions $null |
+            Should -Be '0h 0m'
+    }
+
+    It 'formats duration_ms 90061000 ms as short format with days: 1d 1h 1m' {
+        # 90061000 ms = 90061 s = 1d 1h 1m
+        Format-FieldValue -Value 90061000 -DataType 'duration_ms' -Format 'short' -FormatOptions $null |
+            Should -Be '1d 1h 1m'
+    }
+
+    It 'formats duration_ms 90061000 ms as long format with days: 1d 1hr 1min' {
+        Format-FieldValue -Value 90061000 -DataType 'duration_ms' -Format 'long' -FormatOptions $null |
+            Should -Be '1d 1hr 1min'
+    }
+
+    # --- null fallback tests ---
+    It 'returns 0h 0m for null duration value' {
+        Format-FieldValue -Value $null -DataType 'duration' -Format 'short' -FormatOptions $null |
+            Should -Be '0h 0m'
+    }
+
+    It 'returns 0h 0m for null duration_ms value' {
+        Format-FieldValue -Value $null -DataType 'duration_ms' -Format 'short' -FormatOptions $null |
+            Should -Be '0h 0m'
+    }
+
+    It 'returns 0 for null number value with raw format' {
+        Format-FieldValue -Value $null -DataType 'number' -Format 'raw' -FormatOptions $null |
+            Should -Be '0'
+    }
+
+    It 'returns 0.00 for null currency value' {
+        Format-FieldValue -Value $null -DataType 'currency' -Format $null -FormatOptions $null |
+            Should -Be '0.00'
+    }
+
+    It 'returns false for null bool value' {
+        Format-FieldValue -Value $null -DataType 'bool' -Format $null -FormatOptions $null |
+            Should -Be 'false'
+    }
+
+    It 'returns empty string for null string value' {
+        Format-FieldValue -Value $null -DataType 'string' -Format $null -FormatOptions $null |
+            Should -Be ''
+    }
+
     It 'formats unix_timestamp as raw string' {
         Format-FieldValue -Value 1738857600 -DataType 'unix_timestamp' -Format 'raw' -FormatOptions $null |
             Should -Be '1738857600'

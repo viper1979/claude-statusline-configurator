@@ -3,6 +3,10 @@
 # Reads statusline-config.json from the same directory as this script.
 
 Set-StrictMode -Off
+
+# Ensure stdout is UTF-8 so non-ASCII characters (progressbar, etc.) survive the pipe to Claude Code
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding           = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'SilentlyContinue'
 
 <#
@@ -155,17 +159,19 @@ function Format-ProgressBar {
     $filled = [int][Math]::Round($pct / 10)
     $empty  = 10 - $filled
 
-    # Character sets for filled/empty segments
+    # Character sets for filled/empty segments.
+    # Use Unicode code points instead of literals to avoid encoding issues when
+    # PowerShell reads the script without a UTF-8 BOM (Windows default ANSI page).
     $charMap = @{
-        'block'  = @('▓', '░')
-        'solid'  = @('█', '░')
-        'circle' = @('●', '○')
-        'square' = @('■', '□')
+        'block'  = @([char]0x2593, [char]0x2591)   # ▓ / ░
+        'solid'  = @([char]0x2588, [char]0x2591)   # █ / ░
+        'circle' = @([char]0x25CF, [char]0x25CB)   # ● / ○
+        'square' = @([char]0x25A0, [char]0x25A1)   # ■ / □
         'ascii'  = @('#', '-')
     }
     $chars    = if ($charMap.ContainsKey($Charset)) { $charMap[$Charset] } else { $charMap['block'] }
-    $fillStr  = $chars[0] * $filled
-    $emptyStr = $chars[1] * $empty
+    $fillStr  = ([string]$chars[0]) * $filled
+    $emptyStr = ([string]$chars[1]) * $empty
 
     # Color: use Fg override if provided; otherwise apply threshold only for color-coded
     $color = if ($Fg) {
@@ -230,7 +236,7 @@ function Format-Duration {
 .PARAMETER Value
     The raw value retrieved from the JSON payload.
 .PARAMETER DataType
-    One of: string | currency | bool | number | unix_timestamp | duration
+    One of: string | currency | bool | number | unix_timestamp | duration | duration_ms
 .PARAMETER Format
     Format variant string matching the data type (e.g. 'k', 'short', 'checkmark').
     For unix_timestamp: value is treated as future epoch; past timestamps display as '0h 0m'.
@@ -247,6 +253,16 @@ function Format-FieldValue {
         [object]$FormatOptions
     )
 
+    # Fallback for null values — use a sensible zero-value per data type
+    if ($null -eq $Value) {
+        switch ($DataType) {
+            { $_ -in 'number','currency','duration','duration_ms' } { $Value = 0 }
+            'unix_timestamp' { $Value = 0 }
+            'bool'           { $Value = $false }
+            default          { $Value = '' }
+        }
+    }
+
     switch ($DataType) {
         'unix_timestamp' {
             if ($Format -eq 'raw') { return "$Value" }
@@ -256,6 +272,10 @@ function Format-FieldValue {
         }
         'duration' {
             return Format-Duration -TotalSeconds ([long][double]$Value) -Format $Format
+        }
+        'duration_ms' {
+            # Value is in milliseconds (e.g. cost.total_duration_ms) — convert to seconds first
+            return Format-Duration -TotalSeconds ([long]([double]$Value / 1000)) -Format $Format
         }
         'number' {
             switch ($Format) {

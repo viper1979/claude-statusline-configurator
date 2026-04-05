@@ -386,7 +386,7 @@ const FIELD_TYPE_DEFAULTS = {
   'model.id':                                { dataType: 'string' },
   // Cost
   'cost.total_cost_usd':                     { dataType: 'currency' },
-  'cost.total_duration_ms':                  { dataType: 'duration',       format: 'short' },
+  'cost.total_duration_ms':                  { dataType: 'duration_ms',    format: 'short' },
   'cost.total_lines_added':                  { dataType: 'number',         format: 'raw' },
   'cost.total_lines_removed':                { dataType: 'number',         format: 'raw' },
   // Context Window
@@ -1629,6 +1629,7 @@ const DATATYPE_FORMATS = {
   number:         [['raw','Rohwert (12345678)'],['k','Tausend (12346k)'],['m','Millionen (12m)']],
   unix_timestamp: [['hours','Stunden (75h 32m)'],['short','Kurz (1d 4h 32m)'],['long','Lang (1d 4hr 32min)'],['raw','Rohwert']],
   duration:       [['hours','Stunden (75h 32m)'],['short','Kurz (1d 4h 32m)'],['long','Lang (1d 4hr 32min)']],
+  duration_ms:    [['hours','Stunden (75h 32m)'],['short','Kurz (1d 4h 32m)'],['long','Lang (1d 4hr 32min)']],
 };
 
 function renderEditTabDatatype() {
@@ -2037,7 +2038,7 @@ function makeProgressBar(value, style, fg, brackets = true, charset = 'block', t
 /**
  * Formats a raw value according to dataType/format/formatOptions — mirrors PS Format-FieldValue.
  * @param {*}      value         - raw value from sample data
- * @param {string} dataType      - 'string'|'currency'|'number'|'bool'|'duration'|'unix_timestamp'
+ * @param {string} dataType      - 'string'|'currency'|'number'|'bool'|'duration'|'duration_ms'|'unix_timestamp'
  * @param {string|null} format   - type-specific format string
  * @param {object|null} formatOptions - extra options (e.g. trueLabel/falseLabel for bool/custom)
  * @returns {string}
@@ -2075,6 +2076,19 @@ function formatFieldValue(value, dataType, format, formatOptions) {
     }
     case 'duration': {
       const secs = Math.max(0, Math.floor(Number(value)));
+      const d = Math.floor(secs / 86400);
+      const h = Math.floor((secs % 86400) / 3600);
+      const m = Math.floor((secs % 3600) / 60);
+      if (format === 'hours') return `${h}h ${m}m`;
+      if (format === 'long')  return d > 0 ? `${d}d ${h}hr ${m}min` : `${h}hr ${m}min`;
+      // 'short' — omit leading zero units
+      if (d > 0) return `${d}d ${h}h ${m}m`;
+      if (h > 0) return `${h}h ${m}m`;
+      return `${m}m`;
+    }
+    case 'duration_ms': {
+      // Value is in milliseconds (e.g. cost.total_duration_ms) — convert to seconds first
+      const secs = Math.max(0, Math.floor(Number(value) / 1000));
       const d = Math.floor(secs / 86400);
       const h = Math.floor((secs % 86400) / 3600);
       const m = Math.floor((secs % 3600) / 60);
