@@ -1189,9 +1189,11 @@ function renderLines() {
 
   state.lines.forEach((line, lineIndex) => {
     const lineEl = document.createElement('div');
+    lineEl.dataset.lineId = line.id;
     lineEl.style.cssText = 'margin-bottom:12px;';
     lineEl.innerHTML = `
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+        <span class="line-drag-handle" title="Zeile verschieben">⠿</span>
         <span style="font-size:11px;color:var(--color-text-muted);">Zeile ${lineIndex + 1}</span>
         <button class="btn btn-danger" style="padding:2px 8px;font-size:11px;" onclick="removeLine('${line.id}')">✕ Entfernen</button>
       </div>
