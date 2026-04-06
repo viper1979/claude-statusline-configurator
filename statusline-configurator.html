@@ -1249,6 +1249,7 @@ function initSortable() {
   if (linesContainer._sortable) { linesContainer._sortable.destroy(); linesContainer._sortable = null; }
   linesContainer._sortable = Sortable.create(linesContainer, {
     handle: '.line-drag-handle',
+    draggable: '[data-line-id]',
     animation: 150,
     ghostClass: 'sortable-line-ghost',
     onEnd() {
