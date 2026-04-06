@@ -1244,6 +1244,21 @@ function fieldLabel(field) {
 // ─── Drag & Drop (Sortable.js) ────────────────────────────────────────────
 
 function initSortable() {
+  // ── Sortable for line reordering ──
+  const linesContainer = document.getElementById('lines-container');
+  if (linesContainer._sortable) { linesContainer._sortable.destroy(); linesContainer._sortable = null; }
+  linesContainer._sortable = Sortable.create(linesContainer, {
+    handle: '.line-drag-handle',
+    animation: 150,
+    ghostClass: 'sortable-line-ghost',
+    onEnd() {
+      const lineElements = [...linesContainer.children];
+      const newOrder = lineElements.map(el => el.dataset.lineId);
+      state.lines = newOrder.map(id => state.lines.find(l => l.id === id)).filter(Boolean);
+      render();
+    }
+  });
+
   // Destroy old per-group Sortable instances
   document.querySelectorAll('.field-group-list').forEach(list => {
     if (list._sortable) { list._sortable.destroy(); list._sortable = null; }
