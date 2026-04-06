@@ -199,6 +199,27 @@
       border-radius: 3px;
     }
     .btn-icon:hover { color: var(--color-text); background: var(--color-surface-2); }
+    .line-drag-handle {
+      cursor: grab;
+      color: var(--color-text-muted);
+      font-size: 16px;
+      padding: 2px 4px;
+      user-select: none;
+      border-radius: 3px;
+      transition: color 0.15s;
+    }
+    .line-drag-handle:hover {
+      color: var(--color-text);
+      background: var(--color-surface-2);
+    }
+    .line-drag-handle:active {
+      cursor: grabbing;
+    }
+    .sortable-line-ghost {
+      opacity: 0.4;
+      background: var(--color-surface-2) !important;
+      border-radius: var(--radius);
+    }
     .sortable-ghost {
       opacity: 0.4;
       background: var(--color-accent) !important;
