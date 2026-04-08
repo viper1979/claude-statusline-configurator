@@ -1662,6 +1662,8 @@ function renderEditTabGeneral() {
       ['circle', '●○', 'Kreis'],
       ['square', '■□', 'Quadrat'],
       ['ascii',  '#-', 'ASCII'],
+      ['pipe',   '▮▯', 'Pipe'],
+      ['braille', '⣿⣉', 'Braille'],
     ];
     const initialPreviewValue = f.previewValue ?? Math.round(getNestedValue(SAMPLE_DATA, f.key) ?? 50);
     el.innerHTML = `
@@ -2140,6 +2142,7 @@ const PB_CHARSETS = {
   circle: ['●', '○'],
   square: ['■', '□'],
   ascii:  ['#', '-'],
+  pipe:   ['▮', '▯'],
 };
 
 /**
@@ -2165,6 +2168,19 @@ function makeProgressBar(value, style, fg, brackets = true, charset = 'block', t
   const matched        = activeThresholds.find(t => pct < t.upTo);
   const thresholdColor = matched ? matched.fg : activeThresholds[activeThresholds.length - 1].fg;
   const color = fg ?? (style === 'color-coded' ? thresholdColor : null);
+
+  // Braille charset — special edge characters at positions 0 and 9 (brackets ignored)
+  if (charset === 'braille') {
+    let inner = '';
+    for (let i = 0; i < 10; i++) {
+      if      (i === 9)      inner += '\u28F9';  // ⣹ right edge always
+      else if (i < filled)   inner += '\u28FF';  // ⣿ filled
+      else if (i === 0)      inner += '\u28CF';  // ⣏ left edge when empty
+      else                   inner += '\u28C9';  // ⣉ empty
+    }
+    const bar = `${inner} ${Math.round(pct)}%`;
+    return { bar, color };
+  }
 
   const inner = fillCh.repeat(filled) + emptyCh.repeat(empty);
   const bar   = brackets ? `[${inner}] ${Math.round(pct)}%` : `${inner} ${Math.round(pct)}%`;
