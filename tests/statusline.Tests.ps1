@@ -841,5 +841,38 @@ Describe 'Get-RateLimitsData' {
         $result.five_hour.used_percentage | Should -Be 55
         $result.seven_day.used_percentage | Should -Be 30
     }
+
+    It 'calls request-usage.ps1 plugin when no other source has data and reads cache afterward' {
+        $pluginDir = Join-Path $TestDrive 'plugin-test'
+        New-Item -ItemType Directory -Path $pluginDir -Force | Out-Null
+        # No last-payload, no cache — plugin should be called
+        # Create a fake plugin that writes a cache file
+        $pluginPath = Join-Path $pluginDir 'request-usage.ps1'
+        $cacheDest  = Join-Path $pluginDir 'rate-limits-cache.json'
+        @"
+@{
+    rate_limits = @{
+        five_hour = @{ used_percentage = 77; resets_at = 1744300000 }
+        seven_day = @{ used_percentage = 25; resets_at = 1744700000 }
+    }
+} | ConvertTo-Json -Depth 5 | Set-Content -Path '$($cacheDest -replace "'","''")' -Encoding UTF8
+"@ | Set-Content -Path $pluginPath -Encoding UTF8
+
+        $emptyPayload = Join-Path $pluginDir 'last-payload.json'
+        @{ version = '1.0' } | ConvertTo-Json | Set-Content -Path $emptyPayload -Encoding UTF8
+
+        $result = Get-RateLimitsData -ScriptDir $pluginDir -LastPayloadPath $emptyPayload
+        $result.five_hour.used_percentage | Should -Be 77
+        $result.seven_day.used_percentage | Should -Be 25
+    }
+
+    It 'returns $null when plugin does not exist and no other source has data' {
+        $noPluginDir = Join-Path $TestDrive 'no-plugin'
+        New-Item -ItemType Directory -Path $noPluginDir -Force | Out-Null
+        $emptyPayload = Join-Path $noPluginDir 'last-payload.json'
+        @{ version = '1.0' } | ConvertTo-Json | Set-Content -Path $emptyPayload -Encoding UTF8
+        $result = Get-RateLimitsData -ScriptDir $noPluginDir -LastPayloadPath $emptyPayload
+        $result | Should -BeNullOrEmpty
+    }
 }
 

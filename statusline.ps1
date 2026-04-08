@@ -491,7 +491,7 @@ function Format-Line {
 #>
 function Get-RateLimitsData {
     param(
-        [string]$ScriptDir,        # Used in Tasks 2–3 (cache file and plugin lookup)
+        [string]$ScriptDir,        # Used to locate rate-limits-cache.json and the request-usage.ps1 plugin
         [string]$LastPayloadPath
     )
 
@@ -517,6 +517,27 @@ function Get-RateLimitsData {
             }
         } catch {
             # Corrupted cache — fall through to next source
+        }
+    }
+
+    # Source 3: request-usage.ps1 plugin (calls OAuth API, writes cache)
+    $pluginPath = Join-Path $ScriptDir 'request-usage.ps1'
+    if (Test-Path $pluginPath) {
+        try {
+            & $pluginPath
+        } catch {
+            # Plugin failed — fall through
+        }
+        # Re-read cache (plugin writes rate-limits-cache.json on success)
+        if (Test-Path $cachePath) {
+            try {
+                $cacheData = Get-Content -Path $cachePath -Raw -Encoding UTF8 | ConvertFrom-Json
+                if ($cacheData.rate_limits) {
+                    return $cacheData.rate_limits
+                }
+            } catch {
+                # Corrupted cache after plugin run — give up
+            }
         }
     }
 
