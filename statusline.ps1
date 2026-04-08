@@ -619,17 +619,17 @@ function Invoke-Main {
     # This runs before the payload write so that the previous last-payload.json
     # (which may contain rate_limits from an earlier full invocation) is still intact.
     if (-not (Get-NestedValue $data 'rate_limits')) {
-        $scriptDir = Split-Path $PSCommandPath -Parent
+        $scriptDir = $PSScriptRoot
         $rateLimits = Get-RateLimitsData -ScriptDir $scriptDir -LastPayloadPath $payloadPath
         if ($rateLimits) {
             $data | Add-Member -NotePropertyName 'rate_limits' -NotePropertyValue $rateLimits -Force
         }
     }
 
-    # Write current stdin to last-payload.json (after enrichment, so any rate_limits
-    # carried in stdin are preserved in the file for the next invocation's source-1 lookup).
+    # Write enriched $data to last-payload.json so that rate_limits added from fallback
+    # sources (cache, plugin) are preserved for the next invocation's source-1 lookup.
     try {
-        $InputJson | Set-Content -Path $payloadPath -Encoding UTF8
+        $data | ConvertTo-Json -Depth 20 | Set-Content -Path $payloadPath -Encoding UTF8
     } catch {
         # Silently ignore — writing the payload file is optional diagnostics only
     }
