@@ -46,9 +46,12 @@ function Get-AllKeys {
     $result = @()
     $Obj.PSObject.Properties | ForEach-Object {
         $key = if ($Prefix) { "$Prefix.$($_.Name)" } else { $_.Name }
-        $result += $key
         if ($_.Value -is [PSCustomObject]) {
+            # Container object — recurse into children, do not add the parent key itself
             $result += Get-AllKeys $_.Value $key
+        } else {
+            # Leaf value (string, number, bool, array, null) — add directly
+            $result += $key
         }
     }
     return $result
@@ -356,7 +359,8 @@ function Format-Field {
         }
         'progressbar' {
             $value = Get-NestedValue $Data $Field.key
-            if ($null -eq $value) { return '' }
+            # Default to 0 when value is missing so the bar renders at 0%
+            if ($null -eq $value) { $value = 0 }
             if ($Field.progressStyle -eq 'raw') {
                 return "${fgAnsi}${bgAnsi}${value}${resetAnsi}"
             }
@@ -393,7 +397,14 @@ function Format-Field {
         default {
             # type = 'field'
             $value = Get-NestedValue $Data $Field.key
-            if ($null -eq $value -or "$value" -eq '') { return '' }
+            if ($null -eq $value -or "$value" -eq '') {
+                # Show 'none' for git branch when value is missing
+                if ($Field.key -eq 'worktree.branch') {
+                    $value = 'none'
+                } else {
+                    return ''
+                }
+            }
             $formatted = if ($Field.dataType) {
                 try {
                     Format-FieldValue -Value $value -DataType $Field.dataType -Format $Field.format -FormatOptions $Field.formatOptions
@@ -479,6 +490,22 @@ function Invoke-Main {
         $InputJson | ConvertFrom-Json
     } catch {
         return Write-StatuslineError "Input JSON invalid: $_"
+    }
+
+    # Auto-detect git branch via git command when not provided in JSON input.
+    # Wrapped in try-catch because git might not be installed on this system.
+    if (-not (Get-NestedValue $data 'worktree.branch')) {
+        try {
+            $detectedBranch = git rev-parse --abbrev-ref HEAD 2>$null
+            if ($detectedBranch) {
+                if (-not $data.worktree) {
+                    $data | Add-Member -NotePropertyName 'worktree' -NotePropertyValue ([PSCustomObject]@{})
+                }
+                $data.worktree | Add-Member -NotePropertyName 'branch' -NotePropertyValue $detectedBranch -Force
+            }
+        } catch {
+            # git not installed or not in a repo — silently ignore
+        }
     }
 
     # Persist the received payload for field discovery (fail silently)

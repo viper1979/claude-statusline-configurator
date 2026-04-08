@@ -198,6 +198,34 @@ Describe 'Format-Field' {
         Format-Field $field $sampleData | Should -BeNullOrEmpty
     }
 
+    It 'renders progressbar at 0% when value is null' {
+        $data  = [PSCustomObject]@{}
+        $field = [PSCustomObject]@{ type='progressbar'; key='missing.value'; progressStyle='block'; fg=$null; bg=$null }
+        $result = Format-Field $field $data
+        $result | Should -Match '0%'
+        $result | Should -Not -BeNullOrEmpty
+    }
+
+    It 'renders progressbar raw style as 0 when value is null' {
+        $data  = [PSCustomObject]@{}
+        $field = [PSCustomObject]@{ type='progressbar'; key='missing.value'; progressStyle='raw'; fg=$null; bg=$null }
+        $result = Format-Field $field $data
+        $result | Should -Match '^.*0.*$'
+        $result | Should -Not -Match '%'
+    }
+
+    It 'renders worktree.branch as none when value is null' {
+        $data  = [PSCustomObject]@{}
+        $field = [PSCustomObject]@{ type='field'; key='worktree.branch'; fg=$null; bg=$null; dataType='string'; format=$null; formatOptions=$null; pathDepth=$null }
+        Format-Field $field $data | Should -Be 'none'
+    }
+
+    It 'renders worktree.branch as none when value is empty string' {
+        $data  = [PSCustomObject]@{ worktree = [PSCustomObject]@{ branch = '' } }
+        $field = [PSCustomObject]@{ type='field'; key='worktree.branch'; fg=$null; bg=$null; dataType='string'; format=$null; formatOptions=$null; pathDepth=$null }
+        Format-Field $field $data | Should -Be 'none'
+    }
+
     It 'applies pathDepth truncation to cwd field' {
         $data  = [PSCustomObject]@{ cwd = '/home/user/myproject' }
         $field = [PSCustomObject]@{ type='field'; key='cwd'; fg=$null; bg=$null; pathDepth=2; dataType=$null; format=$null; formatOptions=$null }
@@ -278,6 +306,29 @@ Describe 'Invoke-Main' {
         $result = Invoke-Main -ConfigPath $badConfig -InputJson '{}'
         $result | Should -Match '\[.*statusline\]'
         $result | Should -Match 'Config JSON invalid'
+    }
+
+    It 'auto-detects git branch when not present in input JSON' {
+        $branchConfig = @{
+            lines = @(@{ fields = @(@{ type='field'; key='worktree.branch'; fg=$null; bg=$null; dataType='string'; format=$null; formatOptions=$null; pathDepth=$null }) })
+        } | ConvertTo-Json -Depth 10
+        $branchConfigPath = Join-Path $TestDrive 'branch-config.json'
+        Set-Content -Path $branchConfigPath -Value $branchConfig -Encoding UTF8
+        Mock git { 'feature/auto-detected' }
+        $result = Invoke-Main -ConfigPath $branchConfigPath -InputJson '{}'
+        $result | Should -Match 'feature/auto-detected'
+    }
+
+    It 'does not overwrite existing worktree.branch from input JSON' {
+        $branchConfig = @{
+            lines = @(@{ fields = @(@{ type='field'; key='worktree.branch'; fg=$null; bg=$null; dataType='string'; format=$null; formatOptions=$null; pathDepth=$null }) })
+        } | ConvertTo-Json -Depth 10
+        $branchConfigPath = Join-Path $TestDrive 'branch-existing-config.json'
+        Set-Content -Path $branchConfigPath -Value $branchConfig -Encoding UTF8
+        Mock git { 'feature/from-git' }
+        $result = Invoke-Main -ConfigPath $branchConfigPath -InputJson '{"worktree":{"branch":"from-json"}}'
+        $result | Should -Match 'from-json'
+        $result | Should -Not -Match 'from-git'
     }
 
     It 'outputs empty field as empty string without crashing' {
@@ -471,7 +522,8 @@ Describe 'Get-AllKeys' {
         $inner = [PSCustomObject]@{ display_name = 'Opus' }
         $data  = [PSCustomObject]@{ model = $inner }
         $result = Get-AllKeys $data ''
-        $result | Should -Contain 'model'
+        # Parent container keys are not included — only leaf keys (fix for false new_fields_indicator)
+        $result | Should -Not -Contain 'model'
         $result | Should -Contain 'model.display_name'
     }
 
@@ -640,5 +692,44 @@ Describe 'new_fields_indicator in Format-Field' {
             $field = [PSCustomObject]@{ type='new_fields_indicator'; fg=$null; bg=$null }
             Format-Field $field $data | Should -BeNullOrEmpty
         }
+    }
+}
+
+Describe 'Get-AllKeys' {
+    It 'returns leaf keys but not parent container objects' {
+        $data = [PSCustomObject]@{
+            model   = [PSCustomObject]@{ id = 'x'; display_name = 'Opus' }
+            version = '1.0'
+        }
+        $keys = Get-AllKeys $data ''
+        $keys | Should -Not -Contain 'model'
+        $keys | Should -Contain 'model.id'
+        $keys | Should -Contain 'model.display_name'
+        $keys | Should -Contain 'version'
+    }
+
+    It 'returns nested leaf keys three levels deep' {
+        $inner = [PSCustomObject]@{ used_percentage = 42 }
+        $mid   = [PSCustomObject]@{ five_hour = $inner }
+        $data  = [PSCustomObject]@{ rate_limits = $mid }
+        $keys  = Get-AllKeys $data ''
+        $keys | Should -Not -Contain 'rate_limits'
+        $keys | Should -Not -Contain 'rate_limits.five_hour'
+        $keys | Should -Contain 'rate_limits.five_hour.used_percentage'
+    }
+
+    It 'returns array and null values as leaf keys' {
+        $data = [PSCustomObject]@{
+            tags    = @('a', 'b')
+            missing = $null
+        }
+        $keys = Get-AllKeys $data ''
+        $keys | Should -Contain 'tags'
+        $keys | Should -Contain 'missing'
+    }
+
+    It 'returns empty array for null input' {
+        $keys = Get-AllKeys $null ''
+        $keys | Should -BeNullOrEmpty
     }
 }
