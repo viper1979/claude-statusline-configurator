@@ -824,5 +824,22 @@ Describe 'Get-RateLimitsData' {
         $result = Get-RateLimitsData -ScriptDir $noCacheDir -LastPayloadPath $payloadNoRL
         $result | Should -BeNullOrEmpty
     }
+
+    It 'reads rate_limits from rate-limits-cache.json when last-payload lacks them' {
+        # last-payload without rate_limits
+        $payloadNoRL = Join-Path $testDir 'payload-cache-test.json'
+        @{ version = '1.0' } | ConvertTo-Json | Set-Content -Path $payloadNoRL -Encoding UTF8
+        # Cache file with rate_limits
+        $cachePath = Join-Path $testDir 'rate-limits-cache.json'
+        @{
+            rate_limits = @{
+                five_hour = @{ used_percentage = 55; resets_at = 1744200000 }
+                seven_day = @{ used_percentage = 30; resets_at = 1744600000 }
+            }
+        } | ConvertTo-Json -Depth 5 | Set-Content -Path $cachePath -Encoding UTF8
+        $result = Get-RateLimitsData -ScriptDir $testDir -LastPayloadPath $payloadNoRL
+        $result.five_hour.used_percentage | Should -Be 55
+        $result.seven_day.used_percentage | Should -Be 30
+    }
 }
 

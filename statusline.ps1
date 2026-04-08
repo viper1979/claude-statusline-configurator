@@ -507,6 +507,19 @@ function Get-RateLimitsData {
         }
     }
 
+    # Source 2: rate-limits-cache.json (written by request-usage.ps1 plugin)
+    $cachePath = Join-Path $ScriptDir 'rate-limits-cache.json'
+    if (Test-Path $cachePath) {
+        try {
+            $cacheData = Get-Content -Path $cachePath -Raw -Encoding UTF8 | ConvertFrom-Json
+            if ($cacheData.rate_limits) {
+                return $cacheData.rate_limits
+            }
+        } catch {
+            # Corrupted cache — fall through to next source
+        }
+    }
+
     return $null
 }
 
