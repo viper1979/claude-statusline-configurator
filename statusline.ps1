@@ -491,7 +491,7 @@ function Format-Line {
 #>
 function Get-RateLimitsData {
     param(
-        [string]$ScriptDir,
+        [string]$ScriptDir,        # Used in Tasks 2–3 (cache file and plugin lookup)
         [string]$LastPayloadPath
     )
 
