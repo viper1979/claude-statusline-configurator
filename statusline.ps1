@@ -143,9 +143,9 @@ $script:PathKeys = @(
 .PARAMETER Fg
     Override foreground hex color (#rrggbb), or $null to use threshold color (color-coded only).
 .PARAMETER Brackets
-    Whether to wrap the bar in [ ]. Default: $true.
+    Whether to wrap the bar in [ ]. Default: $true. Ignored for 'braille' charset (edge chars serve as visual frame).
 .PARAMETER Charset
-    Character pair to use: 'block' (▓░) | 'solid' (█░) | 'circle' (●○) | 'square' (■□) | 'ascii' (#-).
+    Character pair to use: 'block' (▓░) | 'solid' (█░) | 'circle' (●○) | 'square' (■□) | 'ascii' (#-) | 'pipe' (▮▯) | 'braille' (⣿⣉, special edge chars).
 .OUTPUTS
     ANSI-formatted string ready for stdout.
 #>
