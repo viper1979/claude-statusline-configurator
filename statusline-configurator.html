@@ -413,9 +413,9 @@ const FIELD_TYPE_DEFAULTS = {
   // Context Window
   'context_window.used_percentage':          { dataType: 'number',         format: 'raw' },
   'context_window.remaining_percentage':     { dataType: 'number',         format: 'raw' },
-  'context_window.total_input_tokens':       { dataType: 'number',         format: 'k' },
-  'context_window.total_output_tokens':      { dataType: 'number',         format: 'k' },
-  'context_window.context_window_size':      { dataType: 'number',         format: 'k' },
+  'context_window.total_input_tokens':       { dataType: 'number',         format: 'auto' },
+  'context_window.total_output_tokens':      { dataType: 'number',         format: 'auto' },
+  'context_window.context_window_size':      { dataType: 'number',         format: 'auto' },
   // Rate Limits
   'rate_limits.five_hour.used_percentage':   { dataType: 'number',         format: 'raw' },
   'rate_limits.seven_day.used_percentage':   { dataType: 'number',         format: 'raw' },
@@ -1757,7 +1757,7 @@ const DATATYPE_FORMATS = {
   string:         [],
   currency:       [],
   bool:           [['true_false','true / false'],['yes_no','yes / no'],['checkmark','✓ / ✗'],['custom','Benutzerdefiniert']],
-  number:         [['raw','Rohwert (12345678)'],['k','Tausend (12346k)'],['m','Millionen (12m)']],
+  number:         [['raw','Rohwert (12345678)'],['auto','Auto (456 / 33k / 939m / 12b)']],
   unix_timestamp: [['hours','Stunden (75h 32m)'],['short','Kurz (1d 4h 32m)'],['long','Lang (1d 4hr 32min)'],['raw','Rohwert']],
   duration:       [['hours','Stunden (75h 32m)'],['short','Kurz (1d 4h 32m)'],['long','Lang (1d 4hr 32min)']],
   duration_ms:    [['hours','Stunden (75h 32m)'],['short','Kurz (1d 4h 32m)'],['long','Lang (1d 4hr 32min)']],
@@ -2183,8 +2183,14 @@ function formatFieldValue(value, dataType, format, formatOptions) {
     case 'number': {
       const n = parseFloat(value);
       if (isNaN(n)) return String(value);
-      if (format === 'k') return Math.round(n / 1000) + 'k';
-      if (format === 'm') return Math.round(n / 1000000) + 'm';
+      // k, m, b are deprecated — fall back to auto
+      const effectiveFormat = ['k', 'm', 'b'].includes(format) ? 'auto' : format;
+      if (effectiveFormat === 'auto') {
+        if (n >= 1_000_000_000) return Math.round(n / 1_000_000_000) + 'b';
+        if (n >= 1_000_000)     return Math.round(n / 1_000_000) + 'm';
+        if (n >= 1_000)         return Math.round(n / 1_000) + 'k';
+        return String(Math.round(n));
+      }
       return String(Math.round(n)); // 'raw'
     }
     case 'bool': {
