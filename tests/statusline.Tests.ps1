@@ -876,3 +876,47 @@ Describe 'Get-RateLimitsData' {
     }
 }
 
+Describe 'Invoke-Main rate-limits enrichment' {
+    BeforeAll {
+        $enrichDir = Join-Path $TestDrive 'enrich'
+        New-Item -ItemType Directory -Path $enrichDir -Force | Out-Null
+        $enrichConfig = Join-Path $enrichDir 'statusline-config.json'
+        @{
+            lines = @(@{
+                fields = @(@{
+                    type = 'progressbar'
+                    key  = 'rate_limits.five_hour.used_percentage'
+                    fg   = $null
+                    bg   = $null
+                    progressStyle = 'color-coded'
+                })
+            })
+            knownKeys = @('rate_limits.five_hour.used_percentage')
+        } | ConvertTo-Json -Depth 10 | Set-Content -Path $enrichConfig -Encoding UTF8
+    }
+
+    It 'uses rate_limits from stdin when present — no enrichment needed' {
+        $inputWithRL = @{
+            rate_limits = @{
+                five_hour = @{ used_percentage = 60 }
+            }
+        } | ConvertTo-Json -Depth 5
+        $result = Invoke-Main -ConfigPath $enrichConfig -InputJson $inputWithRL
+        $result | Should -Match '60%'
+    }
+
+    It 'enriches from last-payload.json when stdin lacks rate_limits' {
+        # Write a last-payload with rate_limits
+        $payloadPath = Join-Path $enrichDir 'last-payload.json'
+        @{
+            rate_limits = @{
+                five_hour = @{ used_percentage = 35 }
+            }
+        } | ConvertTo-Json -Depth 5 | Set-Content -Path $payloadPath -Encoding UTF8
+
+        # Stdin without rate_limits — enrichment should kick in
+        $result = Invoke-Main -ConfigPath $enrichConfig -InputJson '{"version":"1.0"}'
+        $result | Should -Match '35%'
+    }
+}
+

@@ -608,9 +608,27 @@ function Invoke-Main {
         }
     }
 
-    # Persist the received payload for field discovery (fail silently)
+    # Persist the received payload for field discovery (fail silently).
+    # $payloadPath is computed before the write so the enrichment block below can use it.
+    # The previous file at this path (from the last invocation) serves as a fallback
+    # for rate_limits — it is read before we overwrite the file with the current stdin.
+    $payloadPath = Join-Path (Split-Path $ConfigPath -Parent) 'last-payload.json'
+
+    # Enrich rate_limits from fallback sources when stdin JSON lacks them.
+    # Mirrors the worktree.branch auto-detection pattern above.
+    # This runs before the payload write so that the previous last-payload.json
+    # (which may contain rate_limits from an earlier full invocation) is still intact.
+    if (-not (Get-NestedValue $data 'rate_limits')) {
+        $scriptDir = Split-Path $PSCommandPath -Parent
+        $rateLimits = Get-RateLimitsData -ScriptDir $scriptDir -LastPayloadPath $payloadPath
+        if ($rateLimits) {
+            $data | Add-Member -NotePropertyName 'rate_limits' -NotePropertyValue $rateLimits -Force
+        }
+    }
+
+    # Write current stdin to last-payload.json (after enrichment, so any rate_limits
+    # carried in stdin are preserved in the file for the next invocation's source-1 lookup).
     try {
-        $payloadPath = Join-Path (Split-Path $ConfigPath -Parent) 'last-payload.json'
         $InputJson | Set-Content -Path $payloadPath -Encoding UTF8
     } catch {
         # Silently ignore — writing the payload file is optional diagnostics only
