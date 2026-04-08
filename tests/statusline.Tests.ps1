@@ -538,6 +538,11 @@ Describe 'Format-FieldValue' {
         Format-FieldValue -Value 5000000 -DataType 'number' -Format 'm' -FormatOptions $null |
             Should -Be '5m'
     }
+
+    It 'deprecated b format falls back to auto behavior' {
+        Format-FieldValue -Value 2000000000 -DataType 'number' -Format 'b' -FormatOptions $null |
+            Should -Be '2b'
+    }
 }
 
 Describe 'Get-AllKeys' {

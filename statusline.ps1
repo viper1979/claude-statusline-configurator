@@ -286,6 +286,7 @@ function Format-FieldValue {
             switch ($effectiveFormat) {
                 'auto' {
                     $n = [double]$Value
+                    # [math]::Round uses MidpointRounding.ToEven (banker's rounding) — acceptable for display purposes
                     if ($n -ge 1000000000) { return "$([math]::Round($n / 1000000000))b" }
                     if ($n -ge 1000000)    { return "$([math]::Round($n / 1000000))m" }
                     if ($n -ge 1000)       { return "$([math]::Round($n / 1000))k" }
