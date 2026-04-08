@@ -281,9 +281,16 @@ function Format-FieldValue {
             return Format-Duration -TotalSeconds ([long]([double]$Value / 1000)) -Format $Format
         }
         'number' {
-            switch ($Format) {
-                'k' { return "$([math]::Round([double]$Value / 1000))k" }
-                'm' { return "$([math]::Round([double]$Value / 1000000))m" }
+            # k, m, b are deprecated — fall back to auto
+            $effectiveFormat = if ($Format -in @('k', 'm', 'b')) { 'auto' } else { $Format }
+            switch ($effectiveFormat) {
+                'auto' {
+                    $n = [double]$Value
+                    if ($n -ge 1000000000) { return "$([math]::Round($n / 1000000000))b" }
+                    if ($n -ge 1000000)    { return "$([math]::Round($n / 1000000))m" }
+                    if ($n -ge 1000)       { return "$([math]::Round($n / 1000))k" }
+                    return "$([int]$n)"
+                }
                 default { return "$Value" }
             }
         }

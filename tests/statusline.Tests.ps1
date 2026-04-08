@@ -508,6 +508,36 @@ Describe 'Format-FieldValue' {
         Format-FieldValue -Value 'anything' -DataType 'unknown_type' -Format $null -FormatOptions $null |
             Should -Be 'anything'
     }
+
+    It 'auto format returns raw integer below 1000' {
+        Format-FieldValue -Value 456 -DataType 'number' -Format 'auto' -FormatOptions $null |
+            Should -Be '456'
+    }
+
+    It 'auto format rounds to k for thousands' {
+        Format-FieldValue -Value 32768 -DataType 'number' -Format 'auto' -FormatOptions $null |
+            Should -Be '33k'
+    }
+
+    It 'auto format rounds to m for millions' {
+        Format-FieldValue -Value 938723466 -DataType 'number' -Format 'auto' -FormatOptions $null |
+            Should -Be '939m'
+    }
+
+    It 'auto format rounds to b for billions' {
+        Format-FieldValue -Value 12000000000 -DataType 'number' -Format 'auto' -FormatOptions $null |
+            Should -Be '12b'
+    }
+
+    It 'deprecated k format falls back to auto behavior' {
+        Format-FieldValue -Value 5000 -DataType 'number' -Format 'k' -FormatOptions $null |
+            Should -Be '5k'
+    }
+
+    It 'deprecated m format falls back to auto behavior' {
+        Format-FieldValue -Value 5000000 -DataType 'number' -Format 'm' -FormatOptions $null |
+            Should -Be '5m'
+    }
 }
 
 Describe 'Get-AllKeys' {
