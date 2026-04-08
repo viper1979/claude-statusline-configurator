@@ -1805,10 +1805,16 @@ function renderFormatOptions(formats, currentFormat, dataType) {
   if (formats.length === 0) {
     return '<div style="font-size:12px;color:var(--color-text-muted);">Keine Format-Optionen verfügbar.</div>';
   }
+  // Normalize deprecated number formats (k, m, b) to 'auto' so the radio selection
+  // doesn't appear empty when a saved config contains an old format value.
+  const DEPRECATED_NUMBER_FORMATS = ['k', 'm', 'b'];
+  const effectiveCurrentFormat = (dataType === 'number' && DEPRECATED_NUMBER_FORMATS.includes(currentFormat))
+    ? 'auto'
+    : currentFormat;
   const opts = formats.map(([val, lbl]) => `
     <label style="display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:5px;cursor:pointer;">
       <input type="radio" name="edit-format" value="${val}"
-             ${(!currentFormat && formats[0][0] === val) || currentFormat === val ? 'checked' : ''}>
+             ${(!effectiveCurrentFormat && formats[0][0] === val) || effectiveCurrentFormat === val ? 'checked' : ''}>
       <span>${lbl}</span>
     </label>
   `).join('');
