@@ -527,9 +527,41 @@ Describe 'Get-AllKeys' {
         $result | Should -Contain 'model.display_name'
     }
 
+    It 'returns leaf keys but not parent container objects' {
+        $data = [PSCustomObject]@{
+            model   = [PSCustomObject]@{ id = 'x'; display_name = 'Opus' }
+            version = '1.0'
+        }
+        $keys = Get-AllKeys $data ''
+        $keys | Should -Not -Contain 'model'
+        $keys | Should -Contain 'model.id'
+        $keys | Should -Contain 'model.display_name'
+        $keys | Should -Contain 'version'
+    }
+
+    It 'returns nested leaf keys three levels deep' {
+        $inner = [PSCustomObject]@{ used_percentage = 42 }
+        $mid   = [PSCustomObject]@{ five_hour = $inner }
+        $data  = [PSCustomObject]@{ rate_limits = $mid }
+        $keys  = Get-AllKeys $data ''
+        $keys | Should -Not -Contain 'rate_limits'
+        $keys | Should -Not -Contain 'rate_limits.five_hour'
+        $keys | Should -Contain 'rate_limits.five_hour.used_percentage'
+    }
+
+    It 'returns array and null values as leaf keys' {
+        $data = [PSCustomObject]@{
+            tags    = @('a', 'b')
+            missing = $null
+        }
+        $keys = Get-AllKeys $data ''
+        $keys | Should -Contain 'tags'
+        $keys | Should -Contain 'missing'
+    }
+
     It 'returns empty array for null input' {
-        $result = Get-AllKeys $null ''
-        $result.Count | Should -Be 0
+        $keys = Get-AllKeys $null ''
+        $keys | Should -BeNullOrEmpty
     }
 }
 
@@ -695,41 +727,3 @@ Describe 'new_fields_indicator in Format-Field' {
     }
 }
 
-Describe 'Get-AllKeys' {
-    It 'returns leaf keys but not parent container objects' {
-        $data = [PSCustomObject]@{
-            model   = [PSCustomObject]@{ id = 'x'; display_name = 'Opus' }
-            version = '1.0'
-        }
-        $keys = Get-AllKeys $data ''
-        $keys | Should -Not -Contain 'model'
-        $keys | Should -Contain 'model.id'
-        $keys | Should -Contain 'model.display_name'
-        $keys | Should -Contain 'version'
-    }
-
-    It 'returns nested leaf keys three levels deep' {
-        $inner = [PSCustomObject]@{ used_percentage = 42 }
-        $mid   = [PSCustomObject]@{ five_hour = $inner }
-        $data  = [PSCustomObject]@{ rate_limits = $mid }
-        $keys  = Get-AllKeys $data ''
-        $keys | Should -Not -Contain 'rate_limits'
-        $keys | Should -Not -Contain 'rate_limits.five_hour'
-        $keys | Should -Contain 'rate_limits.five_hour.used_percentage'
-    }
-
-    It 'returns array and null values as leaf keys' {
-        $data = [PSCustomObject]@{
-            tags    = @('a', 'b')
-            missing = $null
-        }
-        $keys = Get-AllKeys $data ''
-        $keys | Should -Contain 'tags'
-        $keys | Should -Contain 'missing'
-    }
-
-    It 'returns empty array for null input' {
-        $keys = Get-AllKeys $null ''
-        $keys | Should -BeNullOrEmpty
-    }
-}
