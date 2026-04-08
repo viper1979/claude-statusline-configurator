@@ -2151,14 +2151,12 @@ const PB_CHARSETS = {
  * @param {string}      style   - 'normal' | 'color-coded'
  * @param {string|null} fg      - override color (#rrggbb) or null
  * @param {boolean}     brackets - whether to wrap the bar in [ ]
- * @param {string}      charset  - key from PB_CHARSETS
+ * @param {string}      charset  - key from PB_CHARSETS, or 'braille' (handled separately)
  */
 function makeProgressBar(value, style, fg, brackets = true, charset = 'block', thresholds = null) {
   const pct    = Math.min(100, Math.max(0, value || 0));
   const filled = Math.round(pct / 10);
   const empty  = 10 - filled;
-
-  const [fillCh, emptyCh] = PB_CHARSETS[charset] || PB_CHARSETS.block;
 
   const activeThresholds = thresholds || [
     { upTo: 50,  fg: PB_COLORS.low  },
@@ -2181,6 +2179,8 @@ function makeProgressBar(value, style, fg, brackets = true, charset = 'block', t
     const bar = `${inner} ${Math.round(pct)}%`;
     return { bar, color };
   }
+
+  const [fillCh, emptyCh] = PB_CHARSETS[charset] || PB_CHARSETS.block;
 
   const inner = fillCh.repeat(filled) + emptyCh.repeat(empty);
   const bar   = brackets ? `[${inner}] ${Math.round(pct)}%` : `${inner} ${Math.round(pct)}%`;
