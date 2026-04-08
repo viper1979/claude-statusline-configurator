@@ -171,6 +171,7 @@ function Format-ProgressBar {
         'circle' = @([char]0x25CF, [char]0x25CB)   # ● / ○
         'square' = @([char]0x25A0, [char]0x25A1)   # ■ / □
         'ascii'  = @('#', '-')
+        'pipe'   = @([char]0x25AE, [char]0x25AF)   # ▮ / ▯
     }
     $chars    = if ($charMap.ContainsKey($Charset)) { $charMap[$Charset] } else { $charMap['block'] }
     $fillStr  = ([string]$chars[0]) * $filled
@@ -186,6 +187,29 @@ function Format-ProgressBar {
         if ($matched) { $matched.fg } else { ($activeThresholds | Select-Object -Last 1).fg }
     } else {
         $null
+    }
+
+    # Braille charset — special edge characters at positions 0 and 9
+    if ($Charset -eq 'braille') {
+        $bEdgeL = [char]0x28CF   # ⣏ left edge when empty
+        $bEdgeR = [char]0x28F9   # ⣹ right edge (always)
+        $bFill  = [char]0x28FF   # ⣿ filled
+        $bEmpty = [char]0x28C9   # ⣉ empty
+
+        $inner = ''
+        for ($i = 0; $i -lt 10; $i++) {
+            if     ($i -eq 9)           { $inner += $bEdgeR }
+            elseif ($i -lt $filled)     { $inner += $bFill  }
+            elseif ($i -eq 0)           { $inner += $bEdgeL }
+            else                        { $inner += $bEmpty }
+        }
+        # Brackets are ignored for braille — edge chars serve as the visual frame
+        $bar = "$inner $([int]$pct)%"
+
+        if ($color) {
+            return (ConvertTo-AnsiFg $color) + $bar + $script:AnsiReset
+        }
+        return $bar
     }
 
     $inner = "${fillStr}${emptyStr}"

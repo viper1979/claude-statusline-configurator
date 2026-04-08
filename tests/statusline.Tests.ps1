@@ -119,6 +119,33 @@ Describe 'Format-ProgressBar' {
         # pct=80 is exclusive from mid threshold (upTo=80), falls into high (upTo=100) → red #f87171
         $result | Should -Match '248;113;113'   # #f87171 = RGB 248,113,113
     }
+
+    It 'renders pipe charset with filled and empty characters' {
+        $result = Format-ProgressBar -Value 50 -Style 'normal' -Fg $null -Charset 'pipe'
+        $result | Should -Match ([char]0x25AE)  # ▮ filled
+        $result | Should -Match ([char]0x25AF)  # ▯ empty
+    }
+
+    It 'braille: left edge is edgeL char at 0 percent' {
+        $result = Format-ProgressBar -Value 0 -Style 'normal' -Fg $null -Charset 'braille'
+        $result[0] | Should -Be ([char]0x28CF)  # ⣏
+    }
+
+    It 'braille: left edge becomes fill char when first block is filled' {
+        $result = Format-ProgressBar -Value 10 -Style 'normal' -Fg $null -Charset 'braille'
+        $result[0] | Should -Be ([char]0x28FF)  # ⣿
+    }
+
+    It 'braille: right edge position is always edgeR char' {
+        $result = Format-ProgressBar -Value 50 -Style 'normal' -Fg $null -Charset 'braille'
+        $result[9] | Should -Be ([char]0x28F9)  # ⣹
+    }
+
+    It 'braille: brackets parameter is ignored' {
+        $withBrackets    = Format-ProgressBar -Value 50 -Style 'normal' -Fg $null -Charset 'braille' -Brackets $true
+        $withoutBrackets = Format-ProgressBar -Value 50 -Style 'normal' -Fg $null -Charset 'braille' -Brackets $false
+        $withBrackets | Should -Be $withoutBrackets
+    }
 }
 
 Describe 'Format-Field' {
