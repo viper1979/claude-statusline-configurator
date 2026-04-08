@@ -789,3 +789,40 @@ Describe 'new_fields_indicator in Format-Field' {
     }
 }
 
+Describe 'Get-RateLimitsData' {
+    BeforeAll {
+        $testDir = Join-Path $TestDrive 'ratelimits'
+        New-Item -ItemType Directory -Path $testDir -Force | Out-Null
+    }
+
+    It 'returns $null when no source has data' {
+        $emptyDir = Join-Path $TestDrive 'empty'
+        New-Item -ItemType Directory -Path $emptyDir -Force | Out-Null
+        $result = Get-RateLimitsData -ScriptDir $emptyDir -LastPayloadPath (Join-Path $emptyDir 'nonexistent.json')
+        $result | Should -BeNullOrEmpty
+    }
+
+    It 'reads rate_limits from last-payload.json when present' {
+        $payloadPath = Join-Path $testDir 'last-payload.json'
+        @{
+            version = '1.0'
+            rate_limits = @{
+                five_hour = @{ used_percentage = 42; resets_at = 1744123456 }
+                seven_day = @{ used_percentage = 18; resets_at = 1744567890 }
+            }
+        } | ConvertTo-Json -Depth 5 | Set-Content -Path $payloadPath -Encoding UTF8
+        $result = Get-RateLimitsData -ScriptDir $testDir -LastPayloadPath $payloadPath
+        $result.five_hour.used_percentage | Should -Be 42
+        $result.seven_day.used_percentage | Should -Be 18
+    }
+
+    It 'returns $null from last-payload.json when it has no rate_limits' {
+        $payloadNoRL = Join-Path $testDir 'payload-no-rl.json'
+        @{ version = '1.0' } | ConvertTo-Json | Set-Content -Path $payloadNoRL -Encoding UTF8
+        $noCacheDir = Join-Path $TestDrive 'nocache'
+        New-Item -ItemType Directory -Path $noCacheDir -Force | Out-Null
+        $result = Get-RateLimitsData -ScriptDir $noCacheDir -LastPayloadPath $payloadNoRL
+        $result | Should -BeNullOrEmpty
+    }
+}
+

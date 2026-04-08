@@ -478,6 +478,40 @@ function Format-Line {
 
 <#
 .SYNOPSIS
+    Resolves rate_limits data from fallback sources when stdin JSON lacks it.
+.DESCRIPTION
+    Fallback chain: last-payload.json → rate-limits-cache.json → request-usage.ps1 plugin.
+    Returns the first non-null rate_limits object found, or $null if no source has data.
+.PARAMETER ScriptDir
+    Directory where statusline.ps1 resides (used to locate cache and plugin).
+.PARAMETER LastPayloadPath
+    Full path to last-payload.json (already computed by Invoke-Main).
+.OUTPUTS
+    PSCustomObject with rate_limits subtree, or $null.
+#>
+function Get-RateLimitsData {
+    param(
+        [string]$ScriptDir,
+        [string]$LastPayloadPath
+    )
+
+    # Source 1: last-payload.json (previous invocation's full payload)
+    if ($LastPayloadPath -and (Test-Path $LastPayloadPath)) {
+        try {
+            $lastPayload = Get-Content -Path $LastPayloadPath -Raw -Encoding UTF8 | ConvertFrom-Json
+            if ($lastPayload.rate_limits) {
+                return $lastPayload.rate_limits
+            }
+        } catch {
+            # Corrupted file — fall through to next source
+        }
+    }
+
+    return $null
+}
+
+<#
+.SYNOPSIS
     Entry point. Reads config file and input JSON, renders all lines to stdout.
     Also persists the received payload to last-payload.json (next to the config file)
     for field discovery, and exposes config.knownKeys to $script:KnownKeys so that
