@@ -162,8 +162,8 @@ Describe 'Format-Field' {
         Format-Field $field $sampleData | Should -Match 'Opus'
     }
 
-    It 'wraps value with fg ANSI color when fg is set' {
-        $field = [PSCustomObject]@{ type='field'; key='model.display_name'; fg='#ffffff'; bg=$null }
+    It 'wraps value with fg ANSI color when fg is set and fgOverride is true' {
+        $field = [PSCustomObject]@{ type='field'; key='model.display_name'; fg='#ffffff'; fgOverride=$true; bg=$null }
         $result = Format-Field $field $sampleData
         # #ffffff = RGB 255,255,255
         $result | Should -Match '255;255;255'
@@ -175,8 +175,8 @@ Describe 'Format-Field' {
         Format-Field $field $sampleData | Should -Be ' | '
     }
 
-    It 'renders static type with fg color' {
-        $field = [PSCustomObject]@{ type='static'; text='|'; fg='#888888'; bg=$null }
+    It 'renders static type with fg color when fgOverride is true' {
+        $field = [PSCustomObject]@{ type='static'; text='|'; fg='#888888'; fgOverride=$true; bg=$null }
         $result = Format-Field $field $sampleData
         $result | Should -Match '\|'
         # #888888 = RGB 136,136,136

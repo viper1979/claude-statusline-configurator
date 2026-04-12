@@ -1403,10 +1403,10 @@ function buildExportJson() {
       const base = { type: f.type };
       if (f.key)           base.key = f.key;
       if (f.text != null)  base.text = f.text;
-      if (f.fg)            base.fg = f.fg;
-      if (f.fgOverride)    base.fgOverride = true;
-      if (f.bg)            base.bg = f.bg;
-      if (f.bgOverride)    base.bgOverride = true;
+      if (f.fg) { base.fg = f.fg; base.fgOverride = !!f.fgOverride; }
+      else if (f.fgOverride) { base.fgOverride = true; }
+      if (f.bg) { base.bg = f.bg; base.bgOverride = !!f.bgOverride; }
+      else if (f.bgOverride) { base.bgOverride = true; }
       if (f.progressStyle && f.type === 'progressbar') base.progressStyle = f.progressStyle;
       if (f.type === 'progressbar' && f.barBrackets !== undefined) base.barBrackets = f.barBrackets;
       if (f.type === 'progressbar' && f.barCharset)               base.barCharset  = f.barCharset;

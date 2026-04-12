@@ -381,10 +381,11 @@ function Format-Field {
         [PSCustomObject]$Data
     )
 
-    # Priority chain: fgOverride flag > field.fg (explicit or baked) > theme.fieldFg > none.
-    # Mirrors the renderFieldHtml logic in the configurator.
-    $fgIsOverride = if ($null -ne $Field.fgOverride) { [bool]$Field.fgOverride } else { ($null -ne $Field.fg -and $Field.fg -ne '') }
-    $bgIsOverride = if ($null -ne $Field.bgOverride) { [bool]$Field.bgOverride } else { ($null -ne $Field.bg -and $Field.bg -ne '') }
+    # Priority chain: fgOverride flag > theme.fieldFg > none.
+    # Missing fgOverride (e.g. old baked configs or deactivated override) is treated as false,
+    # so the theme color applies. The configurator always writes fgOverride explicitly.
+    $fgIsOverride = [bool]$Field.fgOverride
+    $bgIsOverride = [bool]$Field.bgOverride
     $effectiveFg  = if ($fgIsOverride) { $Field.fg } elseif ($script:ThemeFg) { $script:ThemeFg } else { $null }
     $effectiveBg  = if ($bgIsOverride) { $Field.bg } elseif ($script:ThemeBg) { $script:ThemeBg } else { $null }
 
