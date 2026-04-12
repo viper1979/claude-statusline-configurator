@@ -1154,21 +1154,13 @@ function onThemeSelect(id) {
 }
 
 /**
- * Applies the selected theme: writes fieldFg/fieldBg onto every field object in all lines,
- * sets state.activeTheme, and clears the preview state.
+ * Applies the selected theme: sets state.activeTheme and re-renders.
+ * Color resolution happens in renderFieldHtml via the fgOverride/bgOverride priority chain.
  * @param {string} id
  */
 function applyTheme(id) {
   saveThresholdInputs(id);
-  const theme = state.themes.find(t => t.id === id);
-  if (!theme) return;
-  state.lines.forEach(line => {
-    line.fields.forEach(field => {
-      if (field.type === 'progressbar') return; // Theme fieldFg must not suppress threshold colors
-      if (theme.fieldFg !== null) field.fg = theme.fieldFg;
-      if (theme.fieldBg !== null) field.bg = theme.fieldBg;
-    });
-  });
+  if (!state.themes.find(t => t.id === id)) return;
   state.activeTheme = id;
   _themePreviewId   = null;
   render();
