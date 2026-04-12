@@ -1473,7 +1473,9 @@ function loadConfig(json) {
       key:           f.key           || null,
       text:          f.text          || '',
       fg:            f.fg            || null,
+      fgOverride:    f.fgOverride    || false,
       bg:            f.bg            || null,
+      bgOverride:    f.bgOverride    || false,
       progressStyle: (() => {
         // Migrate old single-value styles to new schema
         const s = f.progressStyle || 'color-coded';
