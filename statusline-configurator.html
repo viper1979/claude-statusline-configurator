@@ -1998,15 +1998,12 @@ function saveEditDialog() {
   }
 
   // Read Farben tab values into draft — only if the tab was actually rendered.
-  // If the user never switched to the Colors tab, the DOM elements don't exist and
-  // _editDraft retains the fg/bg values copied at dialog-open time.
-  const fgNoneEl = document.getElementById('edit-fg-none');
-  if (fgNoneEl !== null) {
-    _editDraft.fg = fgNoneEl.checked ? null : (document.getElementById('edit-fg')?.value || null);
-    _editDraft.bg = document.getElementById('edit-bg-none')?.checked
-      ? null
-      : (document.getElementById('edit-bg')?.value || null);
-  }
+  // fgOverride/bgOverride are already up-to-date (set by activateColorOverride/deactivateColorOverride).
+  // Capture the final picker values in case oninput did not fire (e.g. programmatic change).
+  const fgInput = document.getElementById('edit-fg');
+  if (fgInput) _editDraft.fg = fgInput.value;
+  const bgInput = document.getElementById('edit-bg');
+  if (bgInput) _editDraft.bg = bgInput.value;
 
   // Apply draft to actual state
   if (source === 'line') {
