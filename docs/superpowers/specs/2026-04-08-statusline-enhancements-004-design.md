@@ -129,6 +129,8 @@ The right edge (position 9) is always `⣹` regardless of fill state. The left e
 
 Since this charset cannot use the generic `$charMap` pair approach, it is handled via a dedicated branch in `Format-ProgressBar` before the generic `$charMap` lookup.
 
+The `Brackets` parameter is ignored for `braille` — the edge characters ⣏/⣹ already serve as visual frame. `Style` (normal/color-coded) and `Fg` work as usual.
+
 **Visual reference:**
 
 ```
