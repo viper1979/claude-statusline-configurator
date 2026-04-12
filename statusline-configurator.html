@@ -968,10 +968,12 @@ function renderThemeTab() {
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
           <span style="font-size:12px;color:var(--color-text-muted);">bis</span>
           <input type="number" class="theme-threshold-pct" data-index="${i}" min="1" max="100" value="${pt.upTo}"
+                 oninput="saveThresholdInputs('${escapeHtml(currentId)}'); renderPreview();"
                  style="width:56px;padding:4px 6px;border-radius:4px;border:1px solid var(--color-border);
                         background:var(--color-surface-2);color:var(--color-text);font-size:12px;">
           <span style="font-size:12px;color:var(--color-text-muted);">%</span>
           <input type="color" class="theme-threshold-fg" data-index="${i}" value="${pt.fg || '#ffffff'}"
+                 oninput="saveThresholdInputs('${escapeHtml(currentId)}'); renderPreview();"
                  style="width:36px;height:28px;border:1px solid var(--color-border);border-radius:4px;padding:2px;cursor:pointer;">
           <button class="btn-icon" onclick="removeThreshold(${i})" title="Entfernen"
                   style="margin-left:auto;" ${theme.progressThresholds.length <= 1 ? 'disabled' : ''}>✕</button>
