@@ -2268,7 +2268,7 @@ function formatFieldValue(value, dataType, format, formatOptions) {
  * @param {object} field - field config object from state
  * @param {object} data  - sample data object
  * @param {object|null} previewTheme - optional theme object; its fieldFg/fieldBg are used as
- *   fallback colors when the field has no individual fg/bg set
+ *   fallback colors when the field has no active fgOverride/bgOverride flag set
  * @param {number|null} previewOverride - when non-null and field.type === 'progressbar',
  *   used as the raw value instead of reading from data. Used by the edit dialog preview.
  */
