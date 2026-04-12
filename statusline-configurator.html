@@ -1288,6 +1288,14 @@ function initSortable() {
       animation: 150,
       ghostClass: 'sortable-ghost',
       draggable: '.field-chip',
+      onStart(evt) {
+        // Store the dragged field at drag-start so onAdd can access it regardless of
+        // event order — SortableJS fires onAdd (target) before onRemove (source).
+        const fieldId = evt.item.dataset.fieldId;
+        const srcLine = state.lines.find(l => l.id === lineId);
+        _draggedField        = srcLine?.fields.find(f => f.id === fieldId) ?? null;
+        _draggedSourceLineId = lineId;
+      },
       onAdd(evt) {
         const panelFieldType     = evt.item?.dataset?.fieldType;
         const panelCustomFieldId = evt.item?.dataset?.customFieldId;
@@ -1313,10 +1321,16 @@ function initSortable() {
             : { id: generateId(), type: 'field', key: panelFieldKey, ...defaults, fg: null, bg: null };
           _draggedField = null;
         } else {
-          // Zone-to-zone chip move → use the field buffered by onRemove
+          // Zone-to-zone chip move: field was captured in onStart.
+          // Also remove from source line here — onAdd fires before onRemove in cross-list moves.
           newField = _draggedField;
           _draggedField = null;
           if (!newField) return;
+          if (_draggedSourceLineId && _draggedSourceLineId !== lineId) {
+            const srcLine = state.lines.find(l => l.id === _draggedSourceLineId);
+            if (srcLine) srcLine.fields = srcLine.fields.filter(f => f.id !== newField.id);
+          }
+          _draggedSourceLineId = null;
         }
         const line = state.lines.find(l => l.id === lineId);
         if (!line) return;
@@ -1334,12 +1348,9 @@ function initSortable() {
         updateExportTextarea();
         renderPreview();
       },
-      onRemove(evt) {
-        const fieldId = evt.item.dataset.fieldId;
-        const line = state.lines.find(l => l.id === lineId);
-        if (!line) return;
-        _draggedField = line.fields.find(f => f.id === fieldId) || null;
-        line.fields = line.fields.filter(f => f.id !== fieldId);
+      onRemove(_evt) {
+        // onAdd handles full state management for cross-list moves (captured in onStart).
+        // onRemove is retained as a required Sortable handler but takes no action.
       },
     });
   });
@@ -1531,7 +1542,8 @@ addLine();
 
 // ─── Edit Dialog ─────────────────────────────────────────────────────────
 
-let _draggedField = null; // buffer for zone-to-zone chip drag
+let _draggedField        = null; // buffer for zone-to-zone chip drag (set in onStart)
+let _draggedSourceLineId = null; // source line id for zone-to-zone drag (set in onStart)
 
 let _editCtx = null;   // { source: 'line'|'palette'|'palette-new', lineId, fieldId }
 let _editDraft = null; // deep copy of the field being edited
