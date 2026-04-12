@@ -381,9 +381,16 @@ function Format-Field {
         [PSCustomObject]$Data
     )
 
-    $fgAnsi    = if ($Field.fg) { ConvertTo-AnsiFg $Field.fg } else { '' }
-    $bgAnsi    = if ($Field.bg) { ConvertTo-AnsiBg $Field.bg } else { '' }
-    $resetAnsi = if ($Field.fg -or $Field.bg) { $script:AnsiReset } else { '' }
+    # Priority chain: fgOverride flag > field.fg (explicit or baked) > theme.fieldFg > none.
+    # Mirrors the renderFieldHtml logic in the configurator.
+    $fgIsOverride = if ($null -ne $Field.fgOverride) { [bool]$Field.fgOverride } else { ($null -ne $Field.fg -and $Field.fg -ne '') }
+    $bgIsOverride = if ($null -ne $Field.bgOverride) { [bool]$Field.bgOverride } else { ($null -ne $Field.bg -and $Field.bg -ne '') }
+    $effectiveFg  = if ($fgIsOverride) { $Field.fg } elseif ($script:ThemeFg) { $script:ThemeFg } else { $null }
+    $effectiveBg  = if ($bgIsOverride) { $Field.bg } elseif ($script:ThemeBg) { $script:ThemeBg } else { $null }
+
+    $fgAnsi    = if ($effectiveFg) { ConvertTo-AnsiFg $effectiveFg } else { '' }
+    $bgAnsi    = if ($effectiveBg) { ConvertTo-AnsiBg $effectiveBg } else { '' }
+    $resetAnsi = if ($effectiveFg -or $effectiveBg) { $script:AnsiReset } else { '' }
 
     switch ($Field.type) {
         'static' {
@@ -637,11 +644,18 @@ function Invoke-Main {
     # Expose knownKeys to script scope so Format-Field can access them for new_fields_indicator
     $script:KnownKeys = if ($config.knownKeys) { $config.knownKeys } else { $null }
 
-    # Load active theme thresholds into script scope for Format-ProgressBar
+    # Load active theme colors and thresholds into script scope
+    $script:ThemeFg = $null
+    $script:ThemeBg = $null
     if ($config.activeTheme -and $config.themes) {
         $activeThemeObj = $config.themes | Where-Object { $_.id -eq $config.activeTheme } | Select-Object -First 1
-        if ($activeThemeObj -and $activeThemeObj.progressThresholds) {
-            $script:PbThresholds = $activeThemeObj.progressThresholds
+        if ($activeThemeObj) {
+            if ($activeThemeObj.progressThresholds) {
+                $script:PbThresholds = $activeThemeObj.progressThresholds
+            }
+            # fieldFg/fieldBg apply to non-progressbar fields without an explicit override
+            $script:ThemeFg = $activeThemeObj.fieldFg
+            $script:ThemeBg = $activeThemeObj.fieldBg
         }
     }
 
