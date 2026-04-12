@@ -1207,8 +1207,9 @@ function renderLines() {
 
 function renderFieldChip(field, lineId) {
   // Apply the same priority chain as renderFieldHtml so the chip reflects
-  // the effective color (Override > Theme > Standard) rather than raw field.bg/fg.
-  const activeTheme  = state.themes.find(t => t.id === state.activeTheme) ?? null;
+  // the effective color (Override > Field-Theme > Global Theme > Standard).
+  const fieldThemeId = field.themeId ?? state.activeTheme;
+  const activeTheme  = state.themes.find(t => t.id === fieldThemeId) ?? null;
   const fgIsOverride = field.fgOverride ?? (field.fg !== null && field.fg !== undefined);
   const bgIsOverride = field.bgOverride ?? (field.bg !== null && field.bg !== undefined);
   const effectiveFg  = fgIsOverride ? field.fg : (activeTheme?.fieldFg ?? null);
@@ -1375,10 +1376,6 @@ function renderPreview() {
     return;
   }
 
-  const activeThemeObj = (() => {
-    const id = _themePreviewId ?? state.activeTheme;
-    return id ? state.themes.find(t => t.id === id) || null : null;
-  })();
   const lines = state.lines.map(line => {
     if (line.fields.length === 0) {
       return '<span style="color:var(--color-text-muted);">(leere Zeile)</span>';
@@ -1389,7 +1386,11 @@ function renderPreview() {
       const previewOverride = (_editDraft && _editDraft.id === f.id)
         ? (_editDraft.previewValue ?? f.previewValue ?? null)
         : (f.previewValue ?? null);
-      return renderFieldHtml(f, SAMPLE_DATA, activeThemeObj, previewOverride);
+      // Per-field theme: if the field has its own themeId, use it; otherwise fall back to
+      // the hover-preview theme (_themePreviewId) or the globally active theme.
+      const fieldThemeId  = f.themeId ?? (_themePreviewId ?? state.activeTheme);
+      const fieldThemeObj = fieldThemeId ? state.themes.find(t => t.id === fieldThemeId) ?? null : null;
+      return renderFieldHtml(f, SAMPLE_DATA, fieldThemeObj, previewOverride);
     }).join('');
   });
 
@@ -1407,6 +1408,7 @@ function buildExportJson() {
       else if (f.fgOverride) { base.fgOverride = true; }
       if (f.bg) { base.bg = f.bg; base.bgOverride = !!f.bgOverride; }
       else if (f.bgOverride) { base.bgOverride = true; }
+      if (f.themeId) base.themeId = f.themeId;
       if (f.progressStyle && f.type === 'progressbar') base.progressStyle = f.progressStyle;
       if (f.type === 'progressbar' && f.barBrackets !== undefined) base.barBrackets = f.barBrackets;
       if (f.type === 'progressbar' && f.barCharset)               base.barCharset  = f.barCharset;
@@ -1502,6 +1504,7 @@ function loadConfig(json) {
       fgOverride:    f.fgOverride    ?? (f.fg != null),
       bg:            f.bg            || null,
       bgOverride:    f.bgOverride    ?? (f.bg != null),
+      themeId:       f.themeId       ?? null,
       progressStyle: (() => {
         // Migrate old single-value styles to new schema
         const s = f.progressStyle || 'color-coded';
@@ -1894,7 +1897,9 @@ function renderEditTabColors() {
   const f  = _editDraft;
   if (!f) return;
 
-  const activeTheme = state.themes.find(t => t.id === state.activeTheme) ?? null;
+  // Resolve the effective theme for this field: field-specific or global
+  const fieldThemeId = f.themeId ?? state.activeTheme;
+  const fieldTheme   = fieldThemeId ? state.themes.find(t => t.id === fieldThemeId) ?? null : null;
 
   /**
    * Builds the HTML block for one color channel (fg or bg).
@@ -1903,7 +1908,7 @@ function renderEditTabColors() {
    */
   function buildChannel(channel, label) {
     const overrideKey = channel + 'Override';
-    const themeColor  = channel === 'fg' ? activeTheme?.fieldFg : activeTheme?.fieldBg;
+    const themeColor  = channel === 'fg' ? fieldTheme?.fieldFg : fieldTheme?.fieldBg;
     const isOverride  = f[overrideKey] ?? (f[channel] !== null && f[channel] !== undefined);
     const pickerVal   = f[channel] || themeColor || '#e0e0e0';
 
@@ -1911,7 +1916,7 @@ function renderEditTabColors() {
     if (isOverride) {
       badgeText = 'Override aktiv';
     } else if (themeColor) {
-      badgeText = `Theme: ${themeColor}`;
+      badgeText = fieldTheme?.name ?? 'Theme';
     } else {
       badgeText = 'Standard';
     }
@@ -1920,6 +1925,41 @@ function renderEditTabColors() {
     const toggleFn    = isOverride
       ? `deactivateColorOverride('${channel}')`
       : `activateColorOverride('${channel}')`;
+
+    // Theme dropdown: visible when not in override mode and at least one theme exists.
+    // Allows selecting a field-specific theme instead of following the global activeTheme.
+    const themeSection = !isOverride ? (() => {
+      if (state.themes.length === 0) {
+        return themeColor ? `
+          <div style="margin-top:8px;display:flex;align-items:center;gap:6px;">
+            <div style="width:28px;height:28px;border-radius:4px;border:1px solid var(--color-border);
+                        background:${themeColor};flex-shrink:0;"></div>
+            <span style="font-size:11px;color:var(--color-text-muted);">${escapeHtml(themeColor)}</span>
+          </div>` : '';
+      }
+      const opts = [
+        `<option value="" ${!f.themeId ? 'selected' : ''}>(Globales Theme)</option>`,
+        ...state.themes.map(t =>
+          `<option value="${escapeHtml(t.id)}" ${f.themeId === t.id ? 'selected' : ''}>${escapeHtml(t.name)}</option>`
+        ),
+      ].join('');
+      return `
+        <div style="margin-top:8px;">
+          <select onchange="setFieldTheme(this.value)"
+                  style="font-size:11px;padding:3px 6px;border-radius:4px;
+                         border:1px solid var(--color-border);background:var(--color-surface-2);
+                         color:var(--color-text);cursor:pointer;">
+            ${opts}
+          </select>
+          ${themeColor ? `
+            <div style="margin-top:6px;display:flex;align-items:center;gap:6px;">
+              <div style="width:28px;height:28px;border-radius:4px;border:1px solid var(--color-border);
+                          background:${themeColor};flex-shrink:0;"></div>
+              <span style="font-size:11px;color:var(--color-text-muted);">${escapeHtml(themeColor)}</span>
+            </div>
+          ` : ''}
+        </div>`;
+    })() : '';
 
     return `
       <div style="margin-bottom:16px;">
@@ -1938,13 +1978,7 @@ function renderEditTabColors() {
                    style="cursor:pointer;"
                    oninput="_editDraft.${channel} = this.value; renderPreview();">
           </div>
-        ` : themeColor ? `
-          <div style="margin-top:8px;display:flex;align-items:center;gap:6px;">
-            <div style="width:28px;height:28px;border-radius:4px;border:1px solid var(--color-border);
-                        background:${themeColor};flex-shrink:0;"></div>
-            <span style="font-size:11px;color:var(--color-text-muted);">${escapeHtml(themeColor)}</span>
-          </div>
-        ` : ''}
+        ` : themeSection}
       </div>
     `;
   }
@@ -1960,9 +1994,10 @@ function renderEditTabColors() {
  * @param {'fg'|'bg'} channel
  */
 function activateColorOverride(channel) {
-  const overrideKey = channel + 'Override';
-  const activeTheme = state.themes.find(t => t.id === state.activeTheme) ?? null;
-  const themeColor  = channel === 'fg' ? activeTheme?.fieldFg : activeTheme?.fieldBg;
+  const overrideKey  = channel + 'Override';
+  const fieldThemeId = _editDraft.themeId ?? state.activeTheme;
+  const activeTheme  = state.themes.find(t => t.id === fieldThemeId) ?? null;
+  const themeColor   = channel === 'fg' ? activeTheme?.fieldFg : activeTheme?.fieldBg;
   if (!_editDraft[channel]) {
     _editDraft[channel] = themeColor ?? '#e0e0e0';
   }
@@ -1978,6 +2013,16 @@ function activateColorOverride(channel) {
  */
 function deactivateColorOverride(channel) {
   _editDraft[channel + 'Override'] = false;
+  renderEditTabColors();
+  renderPreview();
+}
+
+/**
+ * Sets a field-specific theme on the edit draft, overriding the global activeTheme for this field.
+ * @param {string} themeId - theme ID, or empty string to follow the global activeTheme
+ */
+function setFieldTheme(themeId) {
+  _editDraft.themeId = themeId || null;
   renderEditTabColors();
   renderPreview();
 }
@@ -2062,10 +2107,8 @@ function saveEditDialog() {
  */
 function renderProgressbarPreview(value) {
   if (!_editDraft) return '';
-  const activeThemeObj = (() => {
-    const id = _themePreviewId ?? state.activeTheme;
-    return id ? state.themes.find(t => t.id === id) || null : null;
-  })();
+  const fieldThemeId   = _editDraft.themeId ?? (_themePreviewId ?? state.activeTheme);
+  const activeThemeObj = fieldThemeId ? state.themes.find(t => t.id === fieldThemeId) ?? null : null;
   return renderFieldHtml(_editDraft, SAMPLE_DATA, activeThemeObj, value);
 }
 

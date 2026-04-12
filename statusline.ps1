@@ -381,13 +381,15 @@ function Format-Field {
         [PSCustomObject]$Data
     )
 
-    # Priority chain: fgOverride flag > theme.fieldFg > none.
-    # Missing fgOverride (e.g. old baked configs or deactivated override) is treated as false,
-    # so the theme color applies. The configurator always writes fgOverride explicitly.
+    # Priority chain: fgOverride flag > field-specific theme > global theme > none.
+    # Missing fgOverride is treated as false so the theme color applies.
+    $fieldTheme      = if ($Field.themeId -and $script:ThemesMap.ContainsKey($Field.themeId)) { $script:ThemesMap[$Field.themeId] } else { $null }
+    $effectiveFgTheme = if ($fieldTheme) { $fieldTheme.fieldFg } else { $script:ThemeFg }
+    $effectiveBgTheme = if ($fieldTheme) { $fieldTheme.fieldBg } else { $script:ThemeBg }
     $fgIsOverride = [bool]$Field.fgOverride
     $bgIsOverride = [bool]$Field.bgOverride
-    $effectiveFg  = if ($fgIsOverride) { $Field.fg } elseif ($script:ThemeFg) { $script:ThemeFg } else { $null }
-    $effectiveBg  = if ($bgIsOverride) { $Field.bg } elseif ($script:ThemeBg) { $script:ThemeBg } else { $null }
+    $effectiveFg  = if ($fgIsOverride) { $Field.fg } elseif ($effectiveFgTheme) { $effectiveFgTheme } else { $null }
+    $effectiveBg  = if ($bgIsOverride) { $Field.bg } elseif ($effectiveBgTheme) { $effectiveBgTheme } else { $null }
 
     $fgAnsi    = if ($effectiveFg) { ConvertTo-AnsiFg $effectiveFg } else { '' }
     $bgAnsi    = if ($effectiveBg) { ConvertTo-AnsiBg $effectiveBg } else { '' }
@@ -644,6 +646,14 @@ function Invoke-Main {
 
     # Expose knownKeys to script scope so Format-Field can access them for new_fields_indicator
     $script:KnownKeys = if ($config.knownKeys) { $config.knownKeys } else { $null }
+
+    # Build a lookup map of all themes for per-field theme resolution
+    $script:ThemesMap = @{}
+    if ($config.themes) {
+        foreach ($t in $config.themes) {
+            $script:ThemesMap[$t.id] = $t
+        }
+    }
 
     # Load active theme colors and thresholds into script scope
     $script:ThemeFg = $null
