@@ -2273,8 +2273,10 @@ function formatFieldValue(value, dataType, format, formatOptions) {
  *   used as the raw value instead of reading from data. Used by the edit dialog preview.
  */
 function renderFieldHtml(field, data, previewTheme = null, previewOverride = null) {
-  const fg = field.fg ?? previewTheme?.fieldFg ?? null;
-  const bg = field.bg ?? previewTheme?.fieldBg ?? null;
+  const fgIsOverride = field.fgOverride ?? (field.fg !== null && field.fg !== undefined);
+  const bgIsOverride = field.bgOverride ?? (field.bg !== null && field.bg !== undefined);
+  const fg = fgIsOverride ? field.fg : (previewTheme?.fieldFg ?? null);
+  const bg = bgIsOverride ? field.bg : (previewTheme?.fieldBg ?? null);
   const style = [fg ? `color:${fg};` : '', bg ? `background:${bg};padding:1px 3px;` : ''].join('');
 
   if (field.type === 'static') {
@@ -2300,7 +2302,7 @@ function renderFieldHtml(field, data, previewTheme = null, previewOverride = nul
     const brackets = field.barBrackets !== false; // default true
     const charset  = field.barCharset || 'block';
     // Use only the field's explicit fg as color override — theme fieldFg must not suppress threshold colors
-    const barFgOverride = field.fg ?? null;
+    const barFgOverride = fgIsOverride ? (field.fg ?? null) : null;
     const { bar, color } = makeProgressBar(raw, field.progressStyle || 'color-coded', barFgOverride, brackets, charset, previewTheme?.progressThresholds || null);
     const colorStyle = color ? `color:${color};` : '';
     const finalStyle = [colorStyle, bg ? `background:${bg};padding:1px 3px;` : ''].join('');
