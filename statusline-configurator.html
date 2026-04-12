@@ -1352,6 +1352,11 @@ function initSortable() {
         // onAdd handles full state management for cross-list moves (captured in onStart).
         // onRemove is retained as a required Sortable handler but takes no action.
       },
+      onEnd(_evt) {
+        // Clear drag globals on drag end (covers cancel/abort cases where onAdd never fires).
+        _draggedField        = null;
+        _draggedSourceLineId = null;
+      },
     });
   });
 }
