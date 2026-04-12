@@ -1206,8 +1206,15 @@ function renderLines() {
 }
 
 function renderFieldChip(field, lineId) {
-  const bg = field.bg ? `background:${field.bg};` : '';
-  const fg = field.fg ? `color:${field.fg};` : '';
+  // Apply the same priority chain as renderFieldHtml so the chip reflects
+  // the effective color (Override > Theme > Standard) rather than raw field.bg/fg.
+  const activeTheme  = state.themes.find(t => t.id === state.activeTheme) ?? null;
+  const fgIsOverride = field.fgOverride ?? (field.fg !== null && field.fg !== undefined);
+  const bgIsOverride = field.bgOverride ?? (field.bg !== null && field.bg !== undefined);
+  const effectiveFg  = fgIsOverride ? field.fg : (activeTheme?.fieldFg ?? null);
+  const effectiveBg  = bgIsOverride ? field.bg : (activeTheme?.fieldBg ?? null);
+  const bg = effectiveBg ? `background:${effectiveBg};` : '';
+  const fg = effectiveFg ? `color:${effectiveFg};` : '';
   const label = fieldLabel(field);
   return `
     <span class="field-chip" data-field-id="${field.id}" data-line-id="${lineId}"
@@ -1930,6 +1937,12 @@ function renderEditTabColors() {
             <input type="color" id="edit-${channel}" value="${escapeHtml(pickerVal)}"
                    style="cursor:pointer;"
                    oninput="_editDraft.${channel} = this.value; renderPreview();">
+          </div>
+        ` : themeColor ? `
+          <div style="margin-top:8px;display:flex;align-items:center;gap:6px;">
+            <div style="width:28px;height:28px;border-radius:4px;border:1px solid var(--color-border);
+                        background:${themeColor};flex-shrink:0;"></div>
+            <span style="font-size:11px;color:var(--color-text-muted);">${escapeHtml(themeColor)}</span>
           </div>
         ` : ''}
       </div>
