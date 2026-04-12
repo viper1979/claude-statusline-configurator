@@ -1859,34 +1859,96 @@ function wireBoolCustomLabels() {
   toggle();
 }
 
+/**
+ * Renders the colors tab in the edit dialog, showing badge + toggle for each color channel.
+ * Three states per channel: Standard (no theme, no override), Theme (theme active, no override),
+ * Override active (field.fgOverride/bgOverride is true).
+ */
 function renderEditTabColors() {
   const el = document.getElementById('edit-tab-colors');
   const f  = _editDraft;
   if (!f) return;
 
-  const fg = f.fg || '';
-  const bg = f.bg || '';
+  const activeTheme = state.themes.find(t => t.id === state.activeTheme) ?? null;
 
-  el.innerHTML = `
-    <div style="margin-bottom:12px;">
-      <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:6px;">Vordergrundfarbe</div>
-      <div style="display:flex;align-items:center;gap:8px;">
-        <input type="color" id="edit-fg" value="${fg || '#e0e0e0'}" style="cursor:pointer;">
-        <label style="font-size:12px;cursor:pointer;display:flex;align-items:center;gap:4px;">
-          <input type="checkbox" id="edit-fg-none" ${!fg ? 'checked' : ''}> Keine Farbe
-        </label>
+  /**
+   * Builds the HTML block for one color channel (fg or bg).
+   * @param {'fg'|'bg'} channel
+   * @param {string} label - display label (e.g. 'Vordergrundfarbe')
+   */
+  function buildChannel(channel, label) {
+    const overrideKey = channel + 'Override';
+    const themeColor  = channel === 'fg' ? activeTheme?.fieldFg : activeTheme?.fieldBg;
+    const isOverride  = f[overrideKey] ?? (f[channel] !== null && f[channel] !== undefined);
+    const pickerVal   = f[channel] || themeColor || '#e0e0e0';
+
+    let badgeText;
+    if (isOverride) {
+      badgeText = 'Override aktiv';
+    } else if (themeColor) {
+      badgeText = `Theme: ${themeColor}`;
+    } else {
+      badgeText = 'Standard';
+    }
+
+    const toggleLabel = isOverride ? 'Override deaktivieren' : 'Override aktivieren';
+    const toggleFn    = isOverride
+      ? `deactivateColorOverride('${channel}')`
+      : `activateColorOverride('${channel}')`;
+
+    return `
+      <div style="margin-bottom:16px;">
+        <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:6px;">${label}</div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <span style="font-size:11px;padding:2px 8px;border-radius:10px;
+                       background:var(--color-surface-2);color:var(--color-text-muted);">
+            ${escapeHtml(badgeText)}
+          </span>
+          <button class="btn" style="font-size:11px;padding:3px 10px;"
+                  onclick="${toggleFn}">${toggleLabel}</button>
+        </div>
+        ${isOverride ? `
+          <div style="margin-top:8px;">
+            <input type="color" id="edit-${channel}" value="${escapeHtml(pickerVal)}"
+                   style="cursor:pointer;"
+                   oninput="_editDraft.${channel} = this.value; renderPreview();">
+          </div>
+        ` : ''}
       </div>
-    </div>
-    <div>
-      <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:6px;">Hintergrundfarbe</div>
-      <div style="display:flex;align-items:center;gap:8px;">
-        <input type="color" id="edit-bg" value="${bg || '#333333'}" style="cursor:pointer;">
-        <label style="font-size:12px;cursor:pointer;display:flex;align-items:center;gap:4px;">
-          <input type="checkbox" id="edit-bg-none" ${!bg ? 'checked' : ''}> Keine Farbe
-        </label>
-      </div>
-    </div>
-  `;
+    `;
+  }
+
+  el.innerHTML =
+    buildChannel('fg', 'Vordergrundfarbe') +
+    buildChannel('bg', 'Hintergrundfarbe');
+}
+
+/**
+ * Activates the field color override for the given channel.
+ * Initialises field.fg/bg to the theme color or a default if not already set.
+ * @param {'fg'|'bg'} channel
+ */
+function activateColorOverride(channel) {
+  const overrideKey = channel + 'Override';
+  const activeTheme = state.themes.find(t => t.id === state.activeTheme) ?? null;
+  const themeColor  = channel === 'fg' ? activeTheme?.fieldFg : activeTheme?.fieldBg;
+  if (!_editDraft[channel]) {
+    _editDraft[channel] = themeColor ?? '#e0e0e0';
+  }
+  _editDraft[overrideKey] = true;
+  renderEditTabColors();
+  renderPreview();
+}
+
+/**
+ * Deactivates the field color override for the given channel.
+ * The stored fg/bg value is retained but ignored by the priority chain.
+ * @param {'fg'|'bg'} channel
+ */
+function deactivateColorOverride(channel) {
+  _editDraft[channel + 'Override'] = false;
+  renderEditTabColors();
+  renderPreview();
 }
 
 function saveEditDialog() {
