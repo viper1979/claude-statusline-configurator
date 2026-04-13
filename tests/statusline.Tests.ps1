@@ -1113,3 +1113,44 @@ Describe 'Compute-DerivedFields' {
         $data.PSObject.Properties['context_window'] | Should -BeNullOrEmpty
     }
 }
+
+Describe 'new_fields_indicator logging' {
+    BeforeAll {
+        $script:ThemeFg   = $null
+        $script:ThemeBg   = $null
+        $script:ThemesMap = @{}
+        $script:KnownKeys = @('version')
+        $logPath = Join-Path $TestDrive 'statusline-new-fields.log'
+        $script:NewFieldsLogPath = $logPath
+    }
+
+    AfterEach {
+        if (Test-Path $script:NewFieldsLogPath) { Remove-Item $script:NewFieldsLogPath -Force }
+    }
+
+    It 'writes unknown key names to log file when LogNewFields is true' {
+        $script:LogNewFields = $true
+        $data  = [PSCustomObject]@{ version = '1.0'; unknownKey = 'value' }
+        $field = [PSCustomObject]@{ type='new_fields_indicator'; fg=$null; bg=$null; fgOverride=$false; bgOverride=$false }
+        Format-Field $field $data | Out-Null
+        Test-Path $script:NewFieldsLogPath | Should -BeTrue
+        $logContent = Get-Content $script:NewFieldsLogPath -Raw
+        $logContent | Should -Match 'unknownKey'
+    }
+
+    It 'does not write log when LogNewFields is false' {
+        $script:LogNewFields = $false
+        $data  = [PSCustomObject]@{ version = '1.0'; unknownKey = 'value' }
+        $field = [PSCustomObject]@{ type='new_fields_indicator'; fg=$null; bg=$null; fgOverride=$false; bgOverride=$false }
+        Format-Field $field $data | Out-Null
+        Test-Path $script:NewFieldsLogPath | Should -BeFalse
+    }
+
+    It 'does not write log when no unknown keys exist' {
+        $script:LogNewFields = $true
+        $data  = [PSCustomObject]@{ version = '1.0' }
+        $field = [PSCustomObject]@{ type='new_fields_indicator'; fg=$null; bg=$null; fgOverride=$false; bgOverride=$false }
+        Format-Field $field $data | Out-Null
+        Test-Path $script:NewFieldsLogPath | Should -BeFalse
+    }
+}

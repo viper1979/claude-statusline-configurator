@@ -116,6 +116,10 @@ function ConvertTo-AnsiBg {
 
 $script:AnsiReset = "$([char]27)[0m"
 
+# Path for new-fields log (set by Invoke-Main, overridable in tests via $script:NewFieldsLogPath)
+$script:LogNewFields     = $false
+$script:NewFieldsLogPath = $null
+
 # Default progressbar threshold colors (overridden by active theme at runtime)
 $script:PbThresholds = @(
     [PSCustomObject]@{ upTo = 50;  fg = '#4ade80' },
@@ -434,6 +438,18 @@ function Format-Field {
             $newKeys = $allKeys | Where-Object { $script:KnownKeys -notcontains $_ }
             $count   = ($newKeys | Measure-Object).Count
             if ($count -eq 0) { return '' }
+
+            # Log unknown key names to file when logging is enabled
+            if ($script:LogNewFields -and $script:NewFieldsLogPath) {
+                $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+                $keyList   = $newKeys -join ', '
+                try {
+                    "[$timestamp] $keyList" | Add-Content -Path $script:NewFieldsLogPath -Encoding UTF8
+                } catch {
+                    # Silently ignore log write failure
+                }
+            }
+
             return "${fgAnsi}${bgAnsi}● ${count} neue Felder${resetAnsi}"
         }
         default {
@@ -696,6 +712,10 @@ function Invoke-Main {
 
     # Expose knownKeys to script scope so Format-Field can access them for new_fields_indicator
     $script:KnownKeys = if ($config.knownKeys) { $config.knownKeys } else { $null }
+
+    # Configure new-fields logging from config
+    $script:LogNewFields     = [bool]($config.logNewFields)
+    $script:NewFieldsLogPath = Join-Path $PSScriptRoot 'statusline-new-fields.log'
 
     # Build a lookup map of all themes for per-field theme resolution
     $script:ThemesMap = @{}
