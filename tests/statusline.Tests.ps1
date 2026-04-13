@@ -1052,3 +1052,57 @@ Describe 'Format-Field placeholder' {
         Format-Field $field $data | Should -Be 'main'
     }
 }
+
+Describe 'Compute-DerivedFields' {
+    It 'sets cache_efficiency correctly for normal values' {
+        $data = [PSCustomObject]@{
+            context_window = [PSCustomObject]@{
+                total_input_tokens = 10000
+                current_usage = [PSCustomObject]@{
+                    cache_read_input_tokens = 7340
+                }
+            }
+        }
+        Compute-DerivedFields -Data $data
+        $data.context_window.cache_efficiency | Should -Be 73.4
+    }
+
+    It 'rounds cache_efficiency to 1 decimal place' {
+        $data = [PSCustomObject]@{
+            context_window = [PSCustomObject]@{
+                total_input_tokens = 3
+                current_usage = [PSCustomObject]@{
+                    cache_read_input_tokens = 1
+                }
+            }
+        }
+        Compute-DerivedFields -Data $data
+        # 1/3 * 100 = 33.333... -> rounded to 33.3
+        $data.context_window.cache_efficiency | Should -Be 33.3
+    }
+
+    It 'does not set cache_efficiency when total_input_tokens is 0' {
+        $data = [PSCustomObject]@{
+            context_window = [PSCustomObject]@{
+                total_input_tokens = 0
+                current_usage = [PSCustomObject]@{
+                    cache_read_input_tokens = 0
+                }
+            }
+        }
+        Compute-DerivedFields -Data $data
+        $data.context_window.PSObject.Properties['cache_efficiency'] | Should -BeNullOrEmpty
+    }
+
+    It 'does not set cache_efficiency when total_input_tokens is null' {
+        $data = [PSCustomObject]@{
+            context_window = [PSCustomObject]@{
+                current_usage = [PSCustomObject]@{
+                    cache_read_input_tokens = 500
+                }
+            }
+        }
+        Compute-DerivedFields -Data $data
+        $data.context_window.PSObject.Properties['cache_efficiency'] | Should -BeNullOrEmpty
+    }
+}

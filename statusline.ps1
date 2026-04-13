@@ -579,6 +579,28 @@ function Get-RateLimitsData {
 
 <#
 .SYNOPSIS
+    Computes derived fields and injects them into $Data via Add-Member.
+.DESCRIPTION
+    Computes context_window.cache_efficiency = cache_read_input_tokens / total_input_tokens * 100.
+    Only sets the field when total_input_tokens > 0 to avoid division by zero.
+.PARAMETER Data
+    PSCustomObject parsed from Claude Code's JSON input (already enriched).
+#>
+function Compute-DerivedFields {
+    param([PSCustomObject]$Data)
+
+    # cache_efficiency = cache_read_input_tokens / total_input_tokens * 100
+    $cacheRead  = Get-NestedValue $Data 'context_window.current_usage.cache_read_input_tokens'
+    $totalInput = Get-NestedValue $Data 'context_window.total_input_tokens'
+    if ($null -ne $cacheRead -and $null -ne $totalInput -and [double]$totalInput -gt 0) {
+        $efficiency = [Math]::Round([double]$cacheRead / [double]$totalInput * 100, 1)
+        $Data.context_window | Add-Member -NotePropertyName 'cache_efficiency' `
+                                          -NotePropertyValue $efficiency -Force
+    }
+}
+
+<#
+.SYNOPSIS
     Entry point. Reads config file and input JSON, renders all lines to stdout.
     Also persists the received payload to last-payload.json (next to the config file)
     for field discovery, and exposes config.knownKeys to $script:KnownKeys so that
@@ -658,6 +680,9 @@ function Invoke-Main {
             $data | Add-Member -NotePropertyName 'rate_limits' -NotePropertyValue $rateLimits -Force
         }
     }
+
+    # Compute derived fields (e.g., cache_efficiency) from enriched data
+    Compute-DerivedFields -Data $data
 
     # Write enriched $data to last-payload.json so that rate_limits added from fallback
     # sources (cache, plugin) are preserved for the next invocation's source-1 lookup.
