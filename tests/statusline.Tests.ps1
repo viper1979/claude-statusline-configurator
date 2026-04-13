@@ -953,3 +953,102 @@ Describe 'Format-Field added_dirs' {
         Format-Field $field $data | Should -Match '0'
     }
 }
+
+Describe 'Format-Field placeholder' {
+    BeforeAll {
+        $script:ThemeFg   = $null
+        $script:ThemeBg   = $null
+        $script:ThemesMap = @{}
+        $script:PathKeys  = @()
+    }
+
+    It 'returns per-dataType default -- for string when value is null' {
+        $data  = [PSCustomObject]@{}
+        $field = [PSCustomObject]@{
+            type='field'; key='agent.name'; fg=$null; bg=$null
+            dataType='string'; format=$null; fgOverride=$false; bgOverride=$false
+            pathDepth=$null; formatOptions=$null
+        }
+        Format-Field $field $data | Should -Be '--'
+    }
+
+    It 'returns per-dataType default 0 for number when value is null' {
+        $data  = [PSCustomObject]@{}
+        $field = [PSCustomObject]@{
+            type='field'; key='cost.total_lines_added'; fg=$null; bg=$null
+            dataType='number'; format='raw'; fgOverride=$false; bgOverride=$false
+            pathDepth=$null; formatOptions=$null
+        }
+        Format-Field $field $data | Should -Be '0'
+    }
+
+    It 'returns per-dataType default $0.00 for currency when value is null' {
+        $data  = [PSCustomObject]@{}
+        $field = [PSCustomObject]@{
+            type='field'; key='cost.total_cost_usd'; fg=$null; bg=$null
+            dataType='currency'; format=$null; fgOverride=$false; bgOverride=$false
+            pathDepth=$null; formatOptions=$null
+        }
+        Format-Field $field $data | Should -Be '$0.00'
+    }
+
+    It 'returns per-dataType default -- for duration_ms when value is null' {
+        $data  = [PSCustomObject]@{}
+        $field = [PSCustomObject]@{
+            type='field'; key='cost.total_duration_ms'; fg=$null; bg=$null
+            dataType='duration_ms'; format='short'; fgOverride=$false; bgOverride=$false
+            pathDepth=$null; formatOptions=$null
+        }
+        Format-Field $field $data | Should -Be '--'
+    }
+
+    It 'returns per-dataType default -- for unix_timestamp when value is null' {
+        $data  = [PSCustomObject]@{}
+        $field = [PSCustomObject]@{
+            type='field'; key='rate_limits.five_hour.resets_at'; fg=$null; bg=$null
+            dataType='unix_timestamp'; format='hours'; fgOverride=$false; bgOverride=$false
+            pathDepth=$null; formatOptions=$null
+        }
+        Format-Field $field $data | Should -Be '--'
+    }
+
+    It 'uses explicit placeholder over dataType default' {
+        $data  = [PSCustomObject]@{}
+        $field = [PSCustomObject]@{
+            type='field'; key='agent.name'; fg=$null; bg=$null
+            dataType='string'; format=$null; fgOverride=$false; bgOverride=$false
+            pathDepth=$null; formatOptions=$null; placeholder='(kein Agent)'
+        }
+        Format-Field $field $data | Should -Be '(kein Agent)'
+    }
+
+    It 'returns empty string when placeholder is explicitly empty string' {
+        $data  = [PSCustomObject]@{}
+        $field = [PSCustomObject]@{
+            type='field'; key='agent.name'; fg=$null; bg=$null
+            dataType='string'; format=$null; fgOverride=$false; bgOverride=$false
+            pathDepth=$null; formatOptions=$null; placeholder=''
+        }
+        Format-Field $field $data | Should -BeNullOrEmpty
+    }
+
+    It 'retains none for worktree.branch when no placeholder is set' {
+        $data  = [PSCustomObject]@{}
+        $field = [PSCustomObject]@{
+            type='field'; key='worktree.branch'; fg=$null; bg=$null
+            dataType='string'; format=$null; fgOverride=$false; bgOverride=$false
+            pathDepth=$null; formatOptions=$null
+        }
+        Format-Field $field $data | Should -Be 'none'
+    }
+
+    It 'respects placeholder for worktree.branch when explicitly set' {
+        $data  = [PSCustomObject]@{}
+        $field = [PSCustomObject]@{
+            type='field'; key='worktree.branch'; fg=$null; bg=$null
+            dataType='string'; format=$null; fgOverride=$false; bgOverride=$false
+            pathDepth=$null; formatOptions=$null; placeholder='main'
+        }
+        Format-Field $field $data | Should -Be 'main'
+    }
+}

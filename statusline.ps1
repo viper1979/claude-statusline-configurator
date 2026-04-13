@@ -448,11 +448,26 @@ function Format-Field {
             }
 
             if ($null -eq $value -or "$value" -eq '') {
-                # Show 'none' for git branch when value is missing
+                # Priority: field.placeholder > worktree.branch hardcoded > per-dataType default > hide
+                if ($Field.PSObject.Properties.Name -contains 'placeholder' -and $null -ne $Field.placeholder) {
+                    # Explicitly configured placeholder (null = not set; '' = hide field)
+                    $ph = $Field.placeholder
+                    if ($ph -eq '') { return '' }
+                    return "${fgAnsi}${bgAnsi}${ph}${resetAnsi}"
+                }
                 if ($Field.key -eq 'worktree.branch') {
                     $value = 'none'
                 } else {
-                    return ''
+                    $defaultPlaceholder = switch ($Field.dataType) {
+                        'currency'       { '$0.00' }
+                        'number'         { '0' }
+                        'string'         { '--' }
+                        'duration_ms'    { '--' }
+                        'unix_timestamp' { '--' }
+                        default          { $null }
+                    }
+                    if ($null -eq $defaultPlaceholder) { return '' }
+                    return "${fgAnsi}${bgAnsi}${defaultPlaceholder}${resetAnsi}"
                 }
             }
             $formatted = if ($Field.dataType) {
