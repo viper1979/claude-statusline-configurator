@@ -351,6 +351,7 @@ const AVAILABLE_FIELDS = [
     { key: 'context_window.current_usage.cache_creation_input_tokens', label: 'Cache Creation Tokens' },
     { key: 'context_window.current_usage.cache_read_input_tokens',     label: 'Cache Read Tokens' },
     { key: 'exceeds_200k_tokens',                                      label: 'Exceeds 200k Tokens' },
+    { key: 'context_window.cache_efficiency', label: 'Cache Efficiency (%)' },
   ]},
   { group: 'Rate Limits', items: [
     { key: 'rate_limits.five_hour.used_percentage', label: '5h Used %' },
@@ -361,10 +362,13 @@ const AVAILABLE_FIELDS = [
   { group: 'Workspace', items: [
     { key: 'workspace.current_dir',  label: 'Current Dir' },
     { key: 'workspace.project_dir',  label: 'Project Dir' },
+    { key: 'workspace.added_dirs',   label: 'Added Dirs Count' },
+    { key: 'workspace.git_worktree', label: 'Git Worktree'      },
     { key: 'cwd',                    label: 'CWD' },
     { key: 'transcript_path',        label: 'Transcript Path' },
   ]},
   { group: 'Session', items: [
+    { key: 'session_name', label: 'Session Name' },
     { key: 'version',              label: 'Version' },
     { key: 'session_id',           label: 'Session ID' },
     { key: 'output_style.name',    label: 'Output Style' },
@@ -416,13 +420,17 @@ const FIELD_TYPE_DEFAULTS = {
   'context_window.total_input_tokens':       { dataType: 'number',         format: 'auto' },
   'context_window.total_output_tokens':      { dataType: 'number',         format: 'auto' },
   'context_window.context_window_size':      { dataType: 'number',         format: 'auto' },
+  'context_window.cache_efficiency':         { dataType: 'number',         format: 'raw' },
   // Rate Limits
   'rate_limits.five_hour.used_percentage':   { dataType: 'number',         format: 'raw' },
   'rate_limits.seven_day.used_percentage':   { dataType: 'number',         format: 'raw' },
   // Workspace / Session
   'workspace.current_dir':                   { dataType: 'string' },
   'workspace.project_dir':                   { dataType: 'string' },
+  'workspace.added_dirs':                    { dataType: 'number',  format: 'raw' },
+  'workspace.git_worktree':                  { dataType: 'string' },
   'cwd':                                     { dataType: 'string' },
+  'session_name':                            { dataType: 'string' },
   'version':                                 { dataType: 'string' },
   'session_id':                              { dataType: 'string' },
   'agent.name':                              { dataType: 'string' },
@@ -437,9 +445,10 @@ const FIELD_TYPE_DEFAULTS = {
 const SAMPLE_DATA = {
   cwd: '/home/user/myproject',
   session_id: 'abc123def456',
+  session_name: 'my-session',
   transcript_path: '/tmp/transcript.jsonl',
   model: { id: 'claude-opus-4-6', display_name: 'Opus' },
-  workspace: { current_dir: '/home/user/myproject', project_dir: '/home/user/myproject' },
+  workspace: { current_dir: '/home/user/myproject', project_dir: '/home/user/myproject', added_dirs: ['/home/user/extra'], git_worktree: 'my-feature' },
   version: '1.0.80',
   output_style: { name: 'default' },
   cost: { total_cost_usd: 0.01234, total_duration_ms: 45000, total_api_duration_ms: 2300, total_lines_added: 156, total_lines_removed: 23 },
@@ -447,6 +456,7 @@ const SAMPLE_DATA = {
     total_input_tokens: 15234, total_output_tokens: 4521, context_window_size: 200000,
     used_percentage: 16, remaining_percentage: 84,
     current_usage: { input_tokens: 8500, output_tokens: 1200, cache_creation_input_tokens: 5000, cache_read_input_tokens: 2000 },
+    cache_efficiency: 73.4,
   },
   exceeds_200k_tokens: false,
   rate_limits: {
