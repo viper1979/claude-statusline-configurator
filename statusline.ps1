@@ -439,6 +439,14 @@ function Format-Field {
         default {
             # type = 'field'
             $value = Get-NestedValue $Data $Field.key
+
+            # Special case: workspace.added_dirs is an array — display element count.
+            # An empty array is unboxed to $null by the pipeline, so we apply @().Count
+            # unconditionally to correctly yield 0 instead of an empty result.
+            if ($Field.key -eq 'workspace.added_dirs') {
+                $value = @($value).Count
+            }
+
             if ($null -eq $value -or "$value" -eq '') {
                 # Show 'none' for git branch when value is missing
                 if ($Field.key -eq 'worktree.branch') {

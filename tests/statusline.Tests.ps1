@@ -920,3 +920,36 @@ Describe 'Invoke-Main rate-limits enrichment' {
     }
 }
 
+Describe 'Format-Field added_dirs' {
+    It 'returns count when added_dirs is a populated array' {
+        $data  = [PSCustomObject]@{
+            workspace = [PSCustomObject]@{ added_dirs = @('/path/a', '/path/b') }
+        }
+        $field = [PSCustomObject]@{
+            type='field'; key='workspace.added_dirs'; fg=$null; bg=$null
+            dataType='number'; format='raw'; fgOverride=$false; bgOverride=$false
+            pathDepth=$null; formatOptions=$null
+        }
+        $script:ThemeFg   = $null
+        $script:ThemeBg   = $null
+        $script:ThemesMap = @{}
+        $script:PathKeys  = @()
+        Format-Field $field $data | Should -Match '2'
+    }
+
+    It 'returns 0 when added_dirs is an empty array' {
+        $data  = [PSCustomObject]@{
+            workspace = [PSCustomObject]@{ added_dirs = @() }
+        }
+        $field = [PSCustomObject]@{
+            type='field'; key='workspace.added_dirs'; fg=$null; bg=$null
+            dataType='number'; format='raw'; fgOverride=$false; bgOverride=$false
+            pathDepth=$null; formatOptions=$null
+        }
+        $script:ThemeFg   = $null
+        $script:ThemeBg   = $null
+        $script:ThemesMap = @{}
+        $script:PathKeys  = @()
+        Format-Field $field $data | Should -Match '0'
+    }
+}
