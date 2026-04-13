@@ -581,8 +581,10 @@ function Get-RateLimitsData {
 .SYNOPSIS
     Computes derived fields and injects them into $Data via Add-Member.
 .DESCRIPTION
-    Computes context_window.cache_efficiency = cache_read_input_tokens / total_input_tokens * 100.
+    General-purpose hook for all derived field computations. Currently computes
+    context_window.cache_efficiency = cache_read_input_tokens / total_input_tokens * 100.
     Only sets the field when total_input_tokens > 0 to avoid division by zero.
+    Add additional derived field logic here as new fields are introduced.
 .PARAMETER Data
     PSCustomObject parsed from Claude Code's JSON input (already enriched).
 #>

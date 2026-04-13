@@ -1105,4 +1105,11 @@ Describe 'Compute-DerivedFields' {
         Compute-DerivedFields -Data $data
         $data.context_window.PSObject.Properties['cache_efficiency'] | Should -BeNullOrEmpty
     }
+
+    It 'does not set cache_efficiency when context_window is missing' {
+        $data = [PSCustomObject]@{}
+        Compute-DerivedFields -Data $data
+        # Get-NestedValue returns $null for both paths; guard prevents Add-Member
+        $data.PSObject.Properties['context_window'] | Should -BeNullOrEmpty
+    }
 }
