@@ -995,7 +995,7 @@ function renderThemeTab() {
   const settingsHtml = `
     <div style="margin-top:16px;border-top:1px solid var(--color-border);padding-top:12px;">
       <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:6px;">Einstellungen</div>
-      <div class="setting-row">
+      <div>
         <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;">
           <input type="checkbox" id="logNewFieldsToggle"
                  onchange="state.logNewFields = this.checked; updateExportTextarea();"
@@ -1581,9 +1581,7 @@ function loadConfig(json) {
 
   // knownKeys: not stored in state — rebuilt on every export from AVAILABLE_FIELDS
 
-  state.logNewFields = !!(imported.logNewFields);
-  const logToggle = document.getElementById('logNewFieldsToggle');
-  if (logToggle) logToggle.checked = state.logNewFields;
+  state.logNewFields = !!(json.logNewFields);
 
   syncIdCounter();
   render();
