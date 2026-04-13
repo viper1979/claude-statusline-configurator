@@ -899,7 +899,7 @@ function deleteCustomField(cfId) {
 
 // ─── State ────────────────────────────────────────────────────────────────
 
-const state = { lines: [], customFields: [], themes: [], activeTheme: null };
+const state = { lines: [], customFields: [], themes: [], activeTheme: null, logNewFields: false };
 
 // ─── Line management ──────────────────────────────────────────────────────
 
@@ -991,12 +991,29 @@ function renderThemeTab() {
       `).join('')
     : '';
 
+  // Settings section appended after theme content in both empty and non-empty state
+  const settingsHtml = `
+    <div style="margin-top:16px;border-top:1px solid var(--color-border);padding-top:12px;">
+      <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:6px;">Einstellungen</div>
+      <div class="setting-row">
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;">
+          <input type="checkbox" id="logNewFieldsToggle"
+                 onchange="state.logNewFields = this.checked; updateExportTextarea();"
+                 ${state.logNewFields ? 'checked' : ''}
+                 title="Unbekannte Payload-Keys in statusline-new-fields.log schreiben">
+          Neue Felder protokollieren
+        </label>
+      </div>
+    </div>
+  `;
+
   el.innerHTML = themes.length === 0
     ? `
         <p style="font-size:12px;color:var(--color-text-muted);margin-bottom:12px;">
           Noch kein Theme vorhanden.
         </p>
         <button class="btn" onclick="createTheme()">+ Neues Theme erstellen</button>
+        ${settingsHtml}
       `
     : `
         <div style="margin-bottom:14px;">
@@ -1051,6 +1068,7 @@ function renderThemeTab() {
             <button class="btn" onclick="cancelThemePreview()">Abbrechen</button>
           </div>
         ` : ''}
+      ${settingsHtml}
       `;
 }
 
@@ -1440,7 +1458,11 @@ function buildExportJson() {
 
   const themes      = state.themes;
   const activeTheme = state.activeTheme;
-  return JSON.stringify({ activeTheme, themes, lines, customFields, knownKeys }, null, 2);
+  const config = { activeTheme, themes, lines, customFields, knownKeys };
+  if (state.logNewFields) {
+    config.logNewFields = true;
+  }
+  return JSON.stringify(config, null, 2);
 }
 
 function updateExportTextarea() {
@@ -1558,6 +1580,10 @@ function loadConfig(json) {
   state.activeTheme = json.activeTheme || null;
 
   // knownKeys: not stored in state — rebuilt on every export from AVAILABLE_FIELDS
+
+  state.logNewFields = !!(imported.logNewFields);
+  const logToggle = document.getElementById('logNewFieldsToggle');
+  if (logToggle) logToggle.checked = state.logNewFields;
 
   syncIdCounter();
   render();
