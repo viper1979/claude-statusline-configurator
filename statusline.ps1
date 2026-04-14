@@ -867,8 +867,13 @@ function Invoke-Main {
         }
     }
 
-    # Render each line with two-pass column alignment
-    return Format-Lines-Aligned $config.lines $data
+    # Render each line — use two-pass column alignment unless explicitly disabled
+    if ($config.columnAlignmentEnabled -ne $false) {
+        return Format-Lines-Aligned $config.lines $data
+    } else {
+        $output = $config.lines | ForEach-Object { Format-Line $_ $data } | Where-Object { $_ -ne '' }
+        return $output -join "`n"
+    }
 }
 
 # ─── Script entry point ───────────────────────────────────────────────────

@@ -245,6 +245,12 @@
       </div>
       <div class="config-tabs-content">
         <div class="main-tab-content" id="main-tab-lines">
+          <div style="margin-bottom:8px;padding:6px 0;border-bottom:1px solid var(--color-border);">
+            <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;">
+              <input type="checkbox" id="toggle-column-alignment" onchange="toggleColumnAlignment(this.checked)" checked>
+              <span>Spaltenausrichtung aktivieren</span>
+            </label>
+          </div>
           <div id="lines-container"></div>
           <button class="btn" id="btn-add-line" onclick="addLine()" style="margin-top:8px;">+ Zeile hinzufügen</button>
         </div>
@@ -906,7 +912,7 @@ function deleteCustomField(cfId) {
 
 // ─── State ────────────────────────────────────────────────────────────────
 
-const state = { lines: [], customFields: [], themes: [], activeTheme: null, logNewFields: false };
+const state = { lines: [], customFields: [], themes: [], activeTheme: null, logNewFields: false, columnAlignmentEnabled: true };
 
 // ─── Line management ──────────────────────────────────────────────────────
 
@@ -1220,6 +1226,9 @@ function renderLines() {
     container.appendChild(lineEl);
   });
 
+  // Sync column alignment checkbox with state
+  const alignEl = document.getElementById('toggle-column-alignment');
+  if (alignEl) alignEl.checked = state.columnAlignmentEnabled;
 }
 
 function renderFieldChip(field, lineId) {
@@ -1278,6 +1287,16 @@ function toggleMergeNext(lineId, fieldId) {
   if (!field) return;
   field.mergeWithNext = !field.mergeWithNext;
   render();
+}
+
+/**
+ * Sets the global column alignment flag and re-renders the preview.
+ * @param {boolean} enabled - Whether column alignment should be active.
+ */
+function toggleColumnAlignment(enabled) {
+  state.columnAlignmentEnabled = enabled;
+  renderPreview();
+  updateExportTextarea();
 }
 
 // ─── Drag & Drop (Sortable.js) ────────────────────────────────────────────
@@ -1529,6 +1548,8 @@ function buildExportJson() {
   if (state.logNewFields) {
     config.logNewFields = true;
   }
+  // Serialize only when disabled (true is the default — omit to keep JSON compact)
+  if (!state.columnAlignmentEnabled) config.columnAlignmentEnabled = false;
   return JSON.stringify(config, null, 2);
 }
 
@@ -1651,6 +1672,7 @@ function loadConfig(json) {
   // knownKeys: not stored in state — rebuilt on every export from AVAILABLE_FIELDS
 
   state.logNewFields = !!(json.logNewFields);
+  state.columnAlignmentEnabled = json.columnAlignmentEnabled !== false;
 
   syncIdCounter();
   render();
