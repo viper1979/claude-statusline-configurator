@@ -202,8 +202,8 @@ function Format-ProgressBar {
 
         $inner = ''
         for ($i = 0; $i -lt 10; $i++) {
-            if     ($i -eq 9)           { $inner += $bEdgeR }
-            elseif ($i -lt $filled)     { $inner += $bFill  }
+            if     ($i -lt $filled)     { $inner += $bFill  }
+            elseif ($i -eq 9)           { $inner += $bEdgeR }
             elseif ($i -eq 0)           { $inner += $bEdgeL }
             else                        { $inner += $bEmpty }
         }

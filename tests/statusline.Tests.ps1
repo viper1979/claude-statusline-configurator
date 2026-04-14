@@ -1371,3 +1371,30 @@ Describe 'Format-Lines-Aligned' {
         $resultLines[1] | Should -Be 'helloY'
     }
 }
+
+Describe 'Format-Progressbar Braille' {
+    It 'shows all filled chars at 100%' {
+        $result = Format-Progressbar -Value 100 -Charset 'braille'
+        # At 100%, all 10 positions should be the filled braille char ⣿ (U+28FF)
+        $bar = $result -replace ' 100%$', ''
+        $bar | Should -Be ([string][char]0x28FF * 10)
+    }
+
+    It 'shows right-edge char at last position when not full' {
+        $result = Format-Progressbar -Value 90 -Charset 'braille'
+        $bar = $result -replace ' 90%$', ''
+        # Position 9 (last) must be the right-edge char ⣹ (U+28F9), not ⣿
+        $bar[-1] | Should -Be ([char]0x28F9)
+        # Positions 0-8 should all be filled ⣿
+        $bar.Substring(0, 9) | Should -Be ([string][char]0x28FF * 9)
+    }
+
+    It 'shows left-edge char at position 0 when empty' {
+        $result = Format-Progressbar -Value 0 -Charset 'braille'
+        $bar = $result -replace ' 0%$', ''
+        # Position 0 must be the left-edge char ⣏ (U+28CF)
+        $bar[0] | Should -Be ([char]0x28CF)
+        # Position 9 (last) must be the right-edge char ⣹ (U+28F9)
+        $bar[-1] | Should -Be ([char]0x28F9)
+    }
+}
