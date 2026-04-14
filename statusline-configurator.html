@@ -352,6 +352,8 @@ const AVAILABLE_FIELDS = [
     { key: 'context_window.current_usage.cache_read_input_tokens',     label: 'Cache Read Tokens' },
     { key: 'exceeds_200k_tokens',                                      label: 'Exceeds 200k Tokens' },
     { key: 'context_window.cache_efficiency', label: 'Cache Efficiency %' },
+    { key: 'context_window.used_tokens',      label: 'Used Tokens' },
+    { key: 'context_window.remain_tokens',    label: 'Remaining Tokens' },
   ]},
   { group: 'Rate Limits', items: [
     { key: 'rate_limits.five_hour.used_percentage', label: '5h Used %' },
@@ -421,6 +423,8 @@ const FIELD_TYPE_DEFAULTS = {
   'context_window.total_output_tokens':      { dataType: 'number',         format: 'auto' },
   'context_window.context_window_size':      { dataType: 'number',         format: 'auto' },
   'context_window.cache_efficiency':         { dataType: 'number',         format: 'raw' },
+  'context_window.used_tokens':              { dataType: 'number',         format: 'auto' },
+  'context_window.remain_tokens':            { dataType: 'number',         format: 'auto' },
   // Rate Limits
   'rate_limits.five_hour.used_percentage':   { dataType: 'number',         format: 'raw' },
   'rate_limits.seven_day.used_percentage':   { dataType: 'number',         format: 'raw' },
@@ -457,6 +461,8 @@ const SAMPLE_DATA = {
     used_percentage: 16, remaining_percentage: 84,
     current_usage: { input_tokens: 8500, output_tokens: 1200, cache_creation_input_tokens: 5000, cache_read_input_tokens: 2000 },
     cache_efficiency: 73.4,
+    used_tokens: 30000,
+    remain_tokens: 170000,
   },
   exceeds_200k_tokens: false,
   rate_limits: {
