@@ -1861,6 +1861,7 @@ function renderEditTabGeneral() {
 
   // Append mergeWithNext checkbox to the general tab for all field types
   const mergeSection = document.createElement('div');
+  mergeSection.id = 'edit-merge-next-section';
   mergeSection.style.cssText = 'margin-top:12px;border-top:1px solid var(--color-border);padding-top:10px;';
   mergeSection.innerHTML = `
     <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;">
@@ -1868,6 +1869,7 @@ function renderEditTabGeneral() {
       <span>Mit nächstem Feld gruppieren (Tab-Ausrichtung)</span>
     </label>
   `;
+  el.querySelector('#edit-merge-next-section')?.remove();
   el.appendChild(mergeSection);
 }
 
