@@ -1212,6 +1212,13 @@ function renderLines() {
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
         <span class="line-drag-handle" title="Zeile verschieben">⠿</span>
         <span style="font-size:11px;color:var(--color-text-muted);">Zeile ${lineIndex + 1}</span>
+        ${lineIndex < state.lines.length - 1 ? `
+          <button class="btn-icon" title="Mit nächster Zeile für Tab-Ausrichtung gruppieren"
+                  onclick="toggleLineMergeNext('${line.id}')"
+                  style="color:${line.mergeWithNext ? 'var(--color-accent)' : 'var(--color-text-muted)'};font-size:13px;">
+            ${line.mergeWithNext ? '→' : '↝'}
+          </button>
+        ` : ''}
         <button class="btn btn-danger" style="padding:2px 8px;font-size:11px;" onclick="removeLine('${line.id}')">✕ Entfernen</button>
       </div>
       <div class="line-drop-zone" data-line-id="${line.id}"
@@ -1297,6 +1304,17 @@ function toggleColumnAlignment(enabled) {
   state.columnAlignmentEnabled = enabled;
   renderPreview();
   updateExportTextarea();
+}
+
+/**
+ * Toggles the mergeWithNext flag on a line and re-renders.
+ * @param {string} lineId - The ID of the line to toggle.
+ */
+function toggleLineMergeNext(lineId) {
+  const line = state.lines.find(l => l.id === lineId);
+  if (!line) return;
+  line.mergeWithNext = !line.mergeWithNext;
+  render();
 }
 
 // ─── Drag & Drop (Sortable.js) ────────────────────────────────────────────
@@ -1426,6 +1444,74 @@ function initSortable() {
   });
 }
 /**
+ * Groups lines into alignment groups based on line-level mergeWithNext flags.
+ * Mirrors the PS1 Build-LineGroups logic.
+ * @param {Array} lines - Array of line objects from state.
+ * @returns {Array<Array>} Array of line groups.
+ */
+function buildLineGroups(lines) {
+  const groups = [];
+  let current = [];
+  for (const line of lines) {
+    current.push(line);
+    if (!line.mergeWithNext) {
+      groups.push(current);
+      current = [];
+    }
+  }
+  if (current.length > 0) groups.push(current);
+  return groups;
+}
+
+/**
+ * Renders a group of lines with two-pass column alignment.
+ * @param {Array} lines - Array of line objects (one alignment group).
+ * @returns {Array<string>} Array of rendered HTML strings, one per non-empty line.
+ */
+function renderLineGroup(lines) {
+  // Pass 1: render all field groups for all lines in this group
+  const allLineGroups = lines.map(line => {
+    if (line.fields.length === 0) return [];
+    return buildGroups(line.fields).map(groupFields =>
+      groupFields.map(f => {
+        const previewOverride = (_editDraft && _editDraft.id === f.id)
+          ? (_editDraft.previewValue ?? f.previewValue ?? null)
+          : (f.previewValue ?? null);
+        const fieldThemeId  = f.themeId ?? (_themePreviewId ?? state.activeTheme);
+        const fieldThemeObj = fieldThemeId ? state.themes.find(t => t.id === fieldThemeId) ?? null : null;
+        return renderFieldHtml(f, SAMPLE_DATA, fieldThemeObj, previewOverride);
+      }).join('')
+    );
+  });
+
+  // Pass 2: max visible width per group position
+  const maxGroupCount = Math.max(0, ...allLineGroups.map(g => g.length));
+  const maxWidths = new Array(maxGroupCount).fill(0);
+  for (let g = 0; g < maxGroupCount; g++) {
+    for (const lineGroups of allLineGroups) {
+      if (g < lineGroups.length) {
+        const w = getVisibleWidth(lineGroups[g]);
+        if (w > maxWidths[g]) maxWidths[g] = w;
+      }
+    }
+  }
+
+  // Pass 3: pad and join per line
+  return allLineGroups.map((lineGroups) => {
+    if (lineGroups.length === 0) return null;
+    const html = lineGroups.map((groupHtml, g) => {
+      const isLast  = g === lineGroups.length - 1;
+      const padding = isLast ? 0 : maxWidths[g] - getVisibleWidth(groupHtml);
+      if (padding > 0) {
+        return groupHtml + `<span style="white-space:pre">${' '.repeat(padding)}</span>`;
+      }
+      return groupHtml;
+    }).join('');
+    return html || null;
+  }).filter(Boolean);
+}
+
+/**
  * Groups fields into column groups based on mergeWithNext flags.
  * Mirrors the PS1 Build-Groups logic exactly.
  * @param {Array} fields - Array of field objects from a line.
@@ -1464,49 +1550,35 @@ function renderPreview() {
     return;
   }
 
-  // Pass 1: render all groups for all lines, measure visible widths
-  const allLineGroups = state.lines.map(line => {
-    if (line.fields.length === 0) return [];
-    return buildGroups(line.fields).map(groupFields =>
-      groupFields.map(f => {
+  let renderedLines;
+
+  if (!state.columnAlignmentEnabled) {
+    // Alignment disabled: render each line independently without padding
+    renderedLines = state.lines.map(line => {
+      if (line.fields.length === 0) {
+        return '<span style="color:var(--color-text-muted);">(leere Zeile)</span>';
+      }
+      return line.fields.map(f => {
         const previewOverride = (_editDraft && _editDraft.id === f.id)
           ? (_editDraft.previewValue ?? f.previewValue ?? null)
           : (f.previewValue ?? null);
         const fieldThemeId  = f.themeId ?? (_themePreviewId ?? state.activeTheme);
         const fieldThemeObj = fieldThemeId ? state.themes.find(t => t.id === fieldThemeId) ?? null : null;
         return renderFieldHtml(f, SAMPLE_DATA, fieldThemeObj, previewOverride);
-      }).join('')
-    );
-  });
-
-  // Pass 2: max visible width per group position
-  const maxGroupCount = Math.max(0, ...allLineGroups.map(g => g.length));
-  const maxWidths = new Array(maxGroupCount).fill(0);
-  for (let g = 0; g < maxGroupCount; g++) {
-    for (const lineGroups of allLineGroups) {
-      if (g < lineGroups.length) {
-        const w = getVisibleWidth(lineGroups[g]);
-        if (w > maxWidths[g]) maxWidths[g] = w;
-      }
-    }
+      }).join('');
+    });
+  } else {
+    // Alignment enabled: group lines, run two-pass alignment per group
+    const lineGroups = buildLineGroups(state.lines);
+    renderedLines = lineGroups.flatMap(group => {
+      const groupResults = renderLineGroup(group);
+      return groupResults.length > 0
+        ? groupResults
+        : ['<span style="color:var(--color-text-muted);">(leere Zeile)</span>'];
+    });
   }
 
-  // Pass 3: pad and join per line
-  const lines = allLineGroups.map(lineGroups => {
-    if (lineGroups.length === 0) {
-      return '<span style="color:var(--color-text-muted);">(leere Zeile)</span>';
-    }
-    return lineGroups.map((groupHtml, g) => {
-      const isLast  = g === lineGroups.length - 1;
-      const padding = isLast ? 0 : maxWidths[g] - getVisibleWidth(groupHtml);
-      if (padding > 0) {
-        return groupHtml + `<span style="white-space:pre">${' '.repeat(padding)}</span>`;
-      }
-      return groupHtml;
-    }).join('');
-  });
-
-  out.innerHTML = lines.join('<br>');
+  out.innerHTML = renderedLines.join('<br>');
 }
 // ─── Export ───────────────────────────────────────────────────────────────
 
