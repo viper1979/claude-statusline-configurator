@@ -389,12 +389,12 @@ Describe 'Format-FieldValue' {
 
     It 'formats number with k suffix' {
         Format-FieldValue -Value 12345 -DataType 'number' -Format 'k' -FormatOptions $null |
-            Should -Be '12k'
+            Should -BeExactly '12K'
     }
 
     It 'formats number with m suffix' {
         Format-FieldValue -Value 12000000 -DataType 'number' -Format 'm' -FormatOptions $null |
-            Should -Be '12m'
+            Should -BeExactly '12M'
     }
 
     It 'formats number raw' {
