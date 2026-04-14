@@ -543,32 +543,32 @@ Describe 'Format-FieldValue' {
 
     It 'auto format rounds to k for thousands' {
         Format-FieldValue -Value 32768 -DataType 'number' -Format 'auto' -FormatOptions $null |
-            Should -Be '33k'
+            Should -BeExactly '33K'
     }
 
     It 'auto format rounds to m for millions' {
         Format-FieldValue -Value 938723466 -DataType 'number' -Format 'auto' -FormatOptions $null |
-            Should -Be '939m'
+            Should -BeExactly '939M'
     }
 
     It 'auto format rounds to b for billions' {
         Format-FieldValue -Value 12000000000 -DataType 'number' -Format 'auto' -FormatOptions $null |
-            Should -Be '12b'
+            Should -BeExactly '12B'
     }
 
     It 'deprecated k format falls back to auto behavior' {
         Format-FieldValue -Value 5000 -DataType 'number' -Format 'k' -FormatOptions $null |
-            Should -Be '5k'
+            Should -BeExactly '5K'
     }
 
     It 'deprecated m format falls back to auto behavior' {
         Format-FieldValue -Value 5000000 -DataType 'number' -Format 'm' -FormatOptions $null |
-            Should -Be '5m'
+            Should -BeExactly '5M'
     }
 
     It 'deprecated b format falls back to auto behavior' {
         Format-FieldValue -Value 2000000000 -DataType 'number' -Format 'b' -FormatOptions $null |
-            Should -Be '2b'
+            Should -BeExactly '2B'
     }
 }
 
