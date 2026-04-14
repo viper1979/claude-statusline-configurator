@@ -392,6 +392,7 @@ const PERCENTAGE_KEYS = new Set([
   'context_window.remaining_percentage',
   'rate_limits.five_hour.used_percentage',
   'rate_limits.seven_day.used_percentage',
+  'context_window.cache_efficiency',
 ]);
 
 // Fields that contain file-system paths (offer pathDepth option)
@@ -1719,6 +1720,7 @@ function renderEditTabGeneral() {
       </div>
     `;
   } else if (f.type === 'progressbar') {
+    const isPercentage = PERCENTAGE_KEYS.has(f.key);
     const curStyle    = f.progressStyle || 'color-coded';
     const curBrackets = f.barBrackets !== false;
     const curCharset  = f.barCharset || 'block';
@@ -1735,6 +1737,17 @@ function renderEditTabGeneral() {
     ];
     const initialPreviewValue = f.previewValue ?? Math.round(getNestedValue(SAMPLE_DATA, f.key) ?? 50);
     el.innerHTML = `
+      ${isPercentage ? `
+      <div style="margin-bottom:12px;">
+        <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:6px;">Darstellung</div>
+        <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;margin-right:16px;">
+          <input type="radio" name="edit-display-type" value="field"> Wert
+        </label>
+        <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;">
+          <input type="radio" name="edit-display-type" value="progressbar" checked> Progressbar
+        </label>
+      </div>
+      ` : ''}
       <div style="margin-bottom:12px;display:flex;align-items:center;gap:10px;">
         <div>
           <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:4px;">Vorschau-Wert (%)</div>
@@ -1793,9 +1806,21 @@ function renderEditTabGeneral() {
     `;
   } else {
     // type === 'field' — key is read-only; path fields also show pathDepth option
-    const isPathField = PATH_KEYS.has(f.key);
-    const hasDepth    = f.pathDepth != null && f.pathDepth > 0;
+    const isPathField   = PATH_KEYS.has(f.key);
+    const hasDepth      = f.pathDepth != null && f.pathDepth > 0;
+    const isPercentage  = PERCENTAGE_KEYS.has(f.key);
     el.innerHTML = `
+      ${isPercentage ? `
+      <div style="margin-bottom:12px;">
+        <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:6px;">Darstellung</div>
+        <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;margin-right:16px;">
+          <input type="radio" name="edit-display-type" value="field" checked> Wert
+        </label>
+        <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;">
+          <input type="radio" name="edit-display-type" value="progressbar"> Progressbar
+        </label>
+      </div>
+      ` : ''}
       <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:4px;">Key</div>
       <div style="padding:6px 8px;border-radius:4px;border:1px solid var(--color-border);
                   background:var(--color-surface-2);font-size:12px;color:var(--color-text-muted);
@@ -2099,6 +2124,30 @@ function saveEditDialog() {
   const pbBracketsEl   = document.getElementById('edit-pb-brackets');
   if (pbCharsetRadio)       _editDraft.barCharset  = pbCharsetRadio.value;
   if (pbBracketsEl !== null) _editDraft.barBrackets = pbBracketsEl.checked;
+
+  // Handle field ↔ progressbar type toggle for PERCENTAGE_KEYS fields
+  const displayTypeRadio = document.querySelector('[name="edit-display-type"]:checked');
+  if (displayTypeRadio) {
+    const newDisplayType = displayTypeRadio.value;
+    if (newDisplayType === 'progressbar' && _editDraft.type === 'field') {
+      // Switch field → progressbar
+      _editDraft.type          = 'progressbar';
+      _editDraft.progressStyle = _editDraft.progressStyle || 'color-coded';
+      _editDraft.barBrackets   = _editDraft.barBrackets !== undefined ? _editDraft.barBrackets : true;
+      _editDraft.barCharset    = _editDraft.barCharset   || 'block';
+      _editDraft.dataType      = null;
+      _editDraft.format        = null;
+    } else if (newDisplayType === 'field' && _editDraft.type === 'progressbar') {
+      // Switch progressbar → field
+      _editDraft.type          = 'field';
+      const defaults           = FIELD_TYPE_DEFAULTS[_editDraft.key] || {};
+      _editDraft.dataType      = defaults.dataType || 'number';
+      _editDraft.format        = defaults.format   || 'raw';
+      _editDraft.progressStyle = undefined;
+      _editDraft.barBrackets   = undefined;
+      _editDraft.barCharset    = undefined;
+    }
+  }
 
   // Read pathDepth for path-key fields
   const pathDepthRadio = document.querySelector('[name="edit-path-depth"]:checked');
