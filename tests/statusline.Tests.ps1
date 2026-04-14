@@ -1285,7 +1285,7 @@ Describe 'Format-Lines-Aligned' {
 
     It 'pads shorter group to match longer group across lines' {
         $lines = @(
-            [PSCustomObject]@{ fields = @(
+            [PSCustomObject]@{ mergeWithNext = $true; fields = @(
                 [PSCustomObject]@{ type = 'static'; text = 'hi';    fg = $null; bg = $null },
                 [PSCustomObject]@{ type = 'static'; text = ' | ';   fg = $null; bg = $null },
                 [PSCustomObject]@{ type = 'static'; text = 'world'; fg = $null; bg = $null }
@@ -1305,7 +1305,7 @@ Describe 'Format-Lines-Aligned' {
 
     It 'groups merged fields and aligns by group width' {
         $lines = @(
-            [PSCustomObject]@{ fields = @(
+            [PSCustomObject]@{ mergeWithNext = $true; fields = @(
                 [PSCustomObject]@{ type = 'static'; text = 'a'; fg = $null; bg = $null; mergeWithNext = $true },
                 [PSCustomObject]@{ type = 'static'; text = 'b'; fg = $null; bg = $null },
                 [PSCustomObject]@{ type = 'static'; text = 'X'; fg = $null; bg = $null }
@@ -1354,7 +1354,7 @@ Describe 'Format-Lines-Aligned' {
         $red   = "$([char]27)[31m"
         $reset = "$([char]27)[0m"
         $lines = @(
-            [PSCustomObject]@{ fields = @(
+            [PSCustomObject]@{ mergeWithNext = $true; fields = @(
                 [PSCustomObject]@{ type = 'static'; text = "${red}hi${reset}";    fg = $null; bg = $null },
                 [PSCustomObject]@{ type = 'static'; text = 'X';                  fg = $null; bg = $null }
             )},
@@ -1396,5 +1396,57 @@ Describe 'Format-Progressbar Braille' {
         $bar[0] | Should -Be ([char]0x28CF)
         # Position 9 (last) must be the right-edge char ⣹ (U+28F9)
         $bar[-1] | Should -Be ([char]0x28F9)
+    }
+}
+
+Describe 'Build-LineGroups' {
+    It 'returns one group per line when no mergeWithNext set' {
+        $lines = @(
+            [PSCustomObject]@{ id = 'a' },
+            [PSCustomObject]@{ id = 'b' }
+        )
+        $groups = Build-LineGroups $lines
+        $groups.Count | Should -Be 2
+        $groups[0].Count | Should -Be 1
+        $groups[1].Count | Should -Be 1
+    }
+
+    It 'groups two lines when first has mergeWithNext' {
+        $lines = @(
+            [PSCustomObject]@{ id = 'a'; mergeWithNext = $true },
+            [PSCustomObject]@{ id = 'b' }
+        )
+        $groups = Build-LineGroups $lines
+        $groups.Count | Should -Be 1
+        $groups[0].Count | Should -Be 2
+    }
+
+    It 'creates two groups from A+B and C' {
+        $lines = @(
+            [PSCustomObject]@{ id = 'a'; mergeWithNext = $true },
+            [PSCustomObject]@{ id = 'b' },
+            [PSCustomObject]@{ id = 'c' }
+        )
+        $groups = Build-LineGroups $lines
+        $groups.Count | Should -Be 2
+        $groups[0].Count | Should -Be 2
+        $groups[1].Count | Should -Be 1
+    }
+
+    It 'handles empty array' {
+        $groups = Build-LineGroups @()
+        $groups.Count | Should -Be 0
+    }
+}
+
+Describe 'Format-Line-Group single line' {
+    It 'renders a single static field' {
+        $lines = @([PSCustomObject]@{
+            fields = @(
+                [PSCustomObject]@{ type = 'static'; text = 'hi'; fg = $null; bg = $null }
+            )
+        })
+        $result = Format-Line-Group $lines ([PSCustomObject]@{})
+        $result | Should -Be 'hi'
     }
 }

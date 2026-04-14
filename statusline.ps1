@@ -548,19 +548,45 @@ function Build-Groups {
 
 <#
 .SYNOPSIS
-    Renders all configured lines with column alignment via two-pass rendering.
+    Groups line config objects into alignment groups based on mergeWithNext flags.
 .DESCRIPTION
-    Pass 1: Renders each group of fields per line and measures visible width.
-    Pass 2: Pads each group to the maximum width of that group position across all lines.
-    The last group in each line is never padded (no trailing whitespace).
+    Lines with mergeWithNext=true are chained with the following line into one group.
+    Only lines in the same group share column alignment.
 .PARAMETER Lines
-    Array of line config objects (each with a .fields array).
-.PARAMETER Data
-    PSCustomObject parsed from Claude Code's JSON input.
+    Array of line config PSCustomObjects.
 .OUTPUTS
-    All non-empty rendered lines joined by newline.
+    Array of arrays — each inner array is one line group.
 #>
-function Format-Lines-Aligned {
+function Build-LineGroups {
+    param([array]$Lines)
+    if (-not $Lines -or $Lines.Count -eq 0) { return , @() }
+    $groups  = [System.Collections.Generic.List[object]]::new()
+    $current = [System.Collections.Generic.List[object]]::new()
+    foreach ($line in $Lines) {
+        $current.Add($line)
+        if (-not $line.mergeWithNext) {
+            $groups.Add($current.ToArray())
+            $current = [System.Collections.Generic.List[object]]::new()
+        }
+    }
+    if ($current.Count -gt 0) { $groups.Add($current.ToArray()) }
+    return , $groups.ToArray()
+}
+
+<#
+.SYNOPSIS
+    Renders a group of lines with two-pass column alignment.
+.DESCRIPTION
+    Contains the three-pass alignment logic (previously in Format-Lines-Aligned):
+    Pass 1 renders field groups, Pass 2 measures max widths, Pass 3 pads and joins.
+.PARAMETER Lines
+    Array of line config objects in one alignment group.
+.PARAMETER Data
+    PSCustomObject parsed from Claude Code JSON input.
+.OUTPUTS
+    Rendered string for all lines in this group, joined by newline.
+#>
+function Format-Line-Group {
     param(
         [array]$Lines,
         [PSCustomObject]$Data
@@ -599,7 +625,6 @@ function Format-Lines-Aligned {
     $outputLines = [System.Collections.Generic.List[string]]::new()
     foreach ($renderedGroups in $allLineGroups) {
         if ($renderedGroups.Count -eq 0) { continue }
-        # Skip line if all groups are empty strings (field returned nothing)
         if (($renderedGroups | Where-Object { (Get-VisibleWidth $_) -gt 0 } | Measure-Object).Count -eq 0) { continue }
         $lineParts = [System.Collections.Generic.List[string]]::new()
         for ($g = 0; $g -lt $renderedGroups.Count; $g++) {
@@ -612,6 +637,36 @@ function Format-Lines-Aligned {
     }
 
     return $outputLines -join "`n"
+}
+
+<#
+.SYNOPSIS
+    Renders all configured lines with column alignment via line groups.
+.DESCRIPTION
+    Groups lines by their mergeWithNext flags (Build-LineGroups), then runs
+    two-pass alignment for each group independently (Format-Line-Group).
+    Lines without mergeWithNext form single-line groups (no cross-line alignment).
+.PARAMETER Lines
+    Array of line config objects (each with a .fields array).
+.PARAMETER Data
+    PSCustomObject parsed from Claude Code's JSON input.
+.OUTPUTS
+    All non-empty rendered lines joined by newline.
+#>
+function Format-Lines-Aligned {
+    param(
+        [array]$Lines,
+        [PSCustomObject]$Data
+    )
+    if (-not $Lines -or $Lines.Count -eq 0) { return '' }
+
+    $lineGroups = Build-LineGroups $Lines
+    $parts = [System.Collections.Generic.List[string]]::new()
+    foreach ($group in $lineGroups) {
+        $result = Format-Line-Group $group $Data
+        if ($result) { $parts.Add($result) }
+    }
+    return $parts -join "`n"
 }
 
 <#
