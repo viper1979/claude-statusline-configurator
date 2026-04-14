@@ -1197,3 +1197,77 @@ Describe 'new_fields_indicator logging' {
         Test-Path $script:NewFieldsLogPath | Should -BeFalse
     }
 }
+
+Describe 'Get-VisibleWidth' {
+    It 'returns length of plain string' {
+        Get-VisibleWidth 'hello' | Should -Be 5
+    }
+
+    It 'strips ANSI color codes before measuring' {
+        # ESC[38;2;74;222;128m = green color, ESC[0m = reset
+        $ansiString = "$([char]27)[38;2;74;222;128mhello$([char]27)[0m"
+        Get-VisibleWidth $ansiString | Should -Be 5
+    }
+
+    It 'returns 0 for empty string' {
+        Get-VisibleWidth '' | Should -Be 0
+    }
+
+    It 'returns 0 for ANSI-only string' {
+        Get-VisibleWidth "$([char]27)[0m" | Should -Be 0
+    }
+}
+
+Describe 'Build-Groups' {
+    It 'returns one group per field when no mergeWithNext flags set' {
+        $fields = @(
+            [PSCustomObject]@{ type = 'field'; key = 'a' },
+            [PSCustomObject]@{ type = 'field'; key = 'b' },
+            [PSCustomObject]@{ type = 'field'; key = 'c' }
+        )
+        $groups = Build-Groups $fields
+        $groups.Count | Should -Be 3
+        $groups[0].Count | Should -Be 1
+        $groups[1].Count | Should -Be 1
+        $groups[2].Count | Should -Be 1
+    }
+
+    It 'groups two fields when first has mergeWithNext' {
+        $fields = @(
+            [PSCustomObject]@{ type = 'field'; key = 'a'; mergeWithNext = $true },
+            [PSCustomObject]@{ type = 'field'; key = 'b' }
+        )
+        $groups = Build-Groups $fields
+        $groups.Count | Should -Be 1
+        $groups[0].Count | Should -Be 2
+        $groups[0][0].key | Should -Be 'a'
+        $groups[0][1].key | Should -Be 'b'
+    }
+
+    It 'creates three groups from chain A-B-C, D, E-F' {
+        $fields = @(
+            [PSCustomObject]@{ key = 'a'; mergeWithNext = $true },
+            [PSCustomObject]@{ key = 'b'; mergeWithNext = $true },
+            [PSCustomObject]@{ key = 'c' },
+            [PSCustomObject]@{ key = 'd' },
+            [PSCustomObject]@{ key = 'e'; mergeWithNext = $true },
+            [PSCustomObject]@{ key = 'f' }
+        )
+        $groups = Build-Groups $fields
+        $groups.Count | Should -Be 3
+        $groups[0].Count | Should -Be 3   # a, b, c
+        $groups[1].Count | Should -Be 1   # d
+        $groups[2].Count | Should -Be 2   # e, f
+    }
+
+    It 'handles single field' {
+        $fields = @([PSCustomObject]@{ key = 'a' })
+        $groups = Build-Groups $fields
+        $groups.Count | Should -Be 1
+    }
+
+    It 'handles empty array' {
+        $groups = Build-Groups @()
+        $groups.Count | Should -Be 0
+    }
+}

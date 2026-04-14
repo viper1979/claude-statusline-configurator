@@ -507,6 +507,47 @@ function Format-Field {
 
 <#
 .SYNOPSIS
+    Returns the visible character width of a string after stripping ANSI escape sequences.
+.PARAMETER Text
+    String possibly containing ANSI color codes (e.g. ESC[38;2;R;G;Bm).
+.OUTPUTS
+    Integer: number of visible characters.
+#>
+function Get-VisibleWidth {
+    param([string]$Text)
+    return ($Text -replace "`e\[[0-9;]*m", '').Length
+}
+
+<#
+.SYNOPSIS
+    Groups an array of field objects into column groups based on mergeWithNext flags.
+.DESCRIPTION
+    Walks fields left to right. A field with mergeWithNext=true is merged with the
+    following field into the same group. Groups form the unit of column alignment.
+.PARAMETER Fields
+    Array of field PSCustomObjects from the config.
+.OUTPUTS
+    Array of arrays — each inner array is one group of fields.
+#>
+function Build-Groups {
+    param([array]$Fields)
+    if (-not $Fields -or $Fields.Count -eq 0) { return , @() }
+    $groups  = [System.Collections.Generic.List[object]]::new()
+    $current = [System.Collections.Generic.List[object]]::new()
+    foreach ($field in $Fields) {
+        $current.Add($field)
+        if (-not $field.mergeWithNext) {
+            $groups.Add($current.ToArray())
+            $current = [System.Collections.Generic.List[object]]::new()
+        }
+    }
+    # Safety: trailing mergeWithNext=true on last field
+    if ($current.Count -gt 0) { $groups.Add($current.ToArray()) }
+    return , $groups.ToArray()
+}
+
+<#
+.SYNOPSIS
     Renders a full configured line (all its fields joined) as an ANSI string.
 .PARAMETER Line
     PSCustomObject with a 'fields' array.
