@@ -918,7 +918,7 @@ const state = { lines: [], customFields: [], themes: [], activeTheme: null, logN
 
 function addLine() {
   if (state.lines.length >= 10) return;
-  state.lines.push({ id: generateId(), fields: [] });
+  state.lines.push({ id: generateId(), mergeWithNext: false, fields: [] });
   render();
 }
 
@@ -1511,28 +1511,33 @@ function renderPreview() {
 // ─── Export ───────────────────────────────────────────────────────────────
 
 function buildExportJson() {
-  const lines = state.lines.map(line => ({
-    fields: line.fields.map(f => {
-      const base = { type: f.type };
-      if (f.key)           base.key = f.key;
-      if (f.text != null)  base.text = f.text;
-      if (f.fg) { base.fg = f.fg; base.fgOverride = !!f.fgOverride; }
-      else if (f.fgOverride) { base.fgOverride = true; }
-      if (f.bg) { base.bg = f.bg; base.bgOverride = !!f.bgOverride; }
-      else if (f.bgOverride) { base.bgOverride = true; }
-      if (f.themeId) base.themeId = f.themeId;
-      if (f.progressStyle && f.type === 'progressbar') base.progressStyle = f.progressStyle;
-      if (f.type === 'progressbar' && f.barBrackets !== undefined) base.barBrackets = f.barBrackets;
-      if (f.type === 'progressbar' && f.barCharset)               base.barCharset  = f.barCharset;
-      if (f.dataType)      base.dataType = f.dataType;
-      if (f.format)        base.format = f.format;
-      if (f.formatOptions) base.formatOptions = f.formatOptions;
-      if (f.pathDepth)     base.pathDepth = f.pathDepth;
-      if (f.placeholder !== undefined && f.placeholder !== null) base.placeholder = f.placeholder;
-      if (f.mergeWithNext) base.mergeWithNext = true;
-      return base;
-    }),
-  }));
+  const lines = state.lines.map(line => {
+    const lineObj = {
+      fields: line.fields.map(f => {
+        const base = { type: f.type };
+        if (f.key)           base.key = f.key;
+        if (f.text != null)  base.text = f.text;
+        if (f.fg) { base.fg = f.fg; base.fgOverride = !!f.fgOverride; }
+        else if (f.fgOverride) { base.fgOverride = true; }
+        if (f.bg) { base.bg = f.bg; base.bgOverride = !!f.bgOverride; }
+        else if (f.bgOverride) { base.bgOverride = true; }
+        if (f.themeId) base.themeId = f.themeId;
+        if (f.progressStyle && f.type === 'progressbar') base.progressStyle = f.progressStyle;
+        if (f.type === 'progressbar' && f.barBrackets !== undefined) base.barBrackets = f.barBrackets;
+        if (f.type === 'progressbar' && f.barCharset)               base.barCharset  = f.barCharset;
+        if (f.dataType)      base.dataType = f.dataType;
+        if (f.format)        base.format = f.format;
+        if (f.formatOptions) base.formatOptions = f.formatOptions;
+        if (f.pathDepth)     base.pathDepth = f.pathDepth;
+        if (f.placeholder !== undefined && f.placeholder !== null) base.placeholder = f.placeholder;
+        if (f.mergeWithNext) base.mergeWithNext = true;
+        return base;
+      }),
+    };
+    // Serialize line-level mergeWithNext only when true to keep JSON compact
+    if (line.mergeWithNext) lineObj.mergeWithNext = true;
+    return lineObj;
+  });
 
   const customFields = state.customFields.map(cf => ({
     id: cf.id, label: cf.label, text: cf.text,
@@ -1614,7 +1619,8 @@ function loadConfig(json) {
   }
 
   state.lines = json.lines.map(line => ({
-    id:     generateId(),
+    id:           generateId(),
+    mergeWithNext: line.mergeWithNext === true,
     fields: (line.fields || []).map(f => ({
       id:            generateId(),
       type:          f.type          || 'field',
