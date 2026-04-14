@@ -2127,6 +2127,7 @@ function saveEditDialog() {
 
   // Handle field ↔ progressbar type toggle for PERCENTAGE_KEYS fields
   const displayTypeRadio = document.querySelector('[name="edit-display-type"]:checked');
+  let typeJustSwitched = false;
   if (displayTypeRadio) {
     const newDisplayType = displayTypeRadio.value;
     if (newDisplayType === 'progressbar' && _editDraft.type === 'field') {
@@ -2137,6 +2138,7 @@ function saveEditDialog() {
       _editDraft.barCharset    = _editDraft.barCharset   || 'block';
       _editDraft.dataType      = null;
       _editDraft.format        = null;
+      typeJustSwitched = true;
     } else if (newDisplayType === 'field' && _editDraft.type === 'progressbar') {
       // Switch progressbar → field
       _editDraft.type          = 'field';
@@ -2146,6 +2148,7 @@ function saveEditDialog() {
       _editDraft.progressStyle = undefined;
       _editDraft.barBrackets   = undefined;
       _editDraft.barCharset    = undefined;
+      typeJustSwitched = true;
     }
   }
 
@@ -2160,9 +2163,9 @@ function saveEditDialog() {
     }
   }
 
-  // Read Datentyp tab values into draft (only when tab is visible)
+  // Read Datentyp tab values into draft (only when tab is visible and type did not just switch)
   const typeEl = document.getElementById('edit-datatype');
-  if (typeEl) {
+  if (typeEl && !typeJustSwitched) {
     _editDraft.dataType = typeEl.value;
     const fmtRadio = document.querySelector('[name="edit-format"]:checked');
     _editDraft.format = fmtRadio ? fmtRadio.value : null;
