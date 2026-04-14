@@ -1234,12 +1234,18 @@ function renderFieldChip(field, lineId) {
   const bg = effectiveBg ? `background:${effectiveBg};` : '';
   const fg = effectiveFg ? `color:${effectiveFg};` : '';
   const label = fieldLabel(field);
+  const mergeActive = !!field.mergeWithNext;
+  const mergeColor  = mergeActive ? 'var(--color-accent)' : 'var(--color-text-muted)';
+  const mergeIcon   = mergeActive ? '→' : '↝';
   return `
     <span class="field-chip" data-field-id="${field.id}" data-line-id="${lineId}"
           style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;
                  border-radius:4px;font-size:12px;background:var(--color-surface-2);
                  border:1px solid var(--color-border);${bg}${fg}cursor:default;">
       <span>${label}</span>
+      <button class="btn-icon" title="Mit nächstem Feld gruppieren (Tab-Ausrichtung)"
+              onclick="toggleMergeNext('${lineId}','${field.id}')"
+              style="color:${mergeColor};font-size:11px;padding:0 2px;">${mergeIcon}</button>
       <button class="btn-icon" title="Bearbeiten" onclick="openEditDialog('line','${lineId}','${field.id}')">✏️</button>
       <button class="btn-icon" title="Entfernen" onclick="removeFieldFromLine('${lineId}','${field.id}')">✕</button>
     </span>
@@ -1258,6 +1264,22 @@ function fieldLabel(field) {
     return field.key;
   }
   return '?';
+}
+
+/**
+ * Toggles the mergeWithNext flag on a field chip and re-renders.
+ * @param {string} lineId - The ID of the line containing the field.
+ * @param {string} fieldId - The ID of the field to toggle.
+ */
+function toggleMergeNext(lineId, fieldId) {
+  const line = state.lines.find(l => l.id === lineId);
+  if (!line) return;
+  const field = line.fields.find(f => f.id === fieldId);
+  if (!field) return;
+  field.mergeWithNext = !field.mergeWithNext;
+  renderLines();
+  renderPreview();
+  updateExportTextarea();
 }
 
 // ─── Drag & Drop (Sortable.js) ────────────────────────────────────────────
@@ -1836,6 +1858,17 @@ function renderEditTabGeneral() {
       ` : ''}
     `;
   }
+
+  // Append mergeWithNext checkbox to the general tab for all field types
+  const mergeSection = document.createElement('div');
+  mergeSection.style.cssText = 'margin-top:12px;border-top:1px solid var(--color-border);padding-top:10px;';
+  mergeSection.innerHTML = `
+    <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;">
+      <input type="checkbox" id="edit-merge-next" ${_editDraft.mergeWithNext ? 'checked' : ''}>
+      <span>Mit nächstem Feld gruppieren (Tab-Ausrichtung)</span>
+    </label>
+  `;
+  el.appendChild(mergeSection);
 }
 
 // Format options per data type — used in renderEditTabDatatype
@@ -2186,6 +2219,10 @@ function saveEditDialog() {
   // Sync logNewFields from new_fields_indicator edit dialog
   const logNewFieldsEl = document.getElementById('edit-log-new-fields');
   if (logNewFieldsEl !== null) state.logNewFields = logNewFieldsEl.checked;
+
+  // Read mergeWithNext checkbox
+  const mergeNextEl = document.getElementById('edit-merge-next');
+  if (mergeNextEl !== null) _editDraft.mergeWithNext = mergeNextEl.checked;
 
   // Apply draft to actual state
   if (source === 'line') {
