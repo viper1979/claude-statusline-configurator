@@ -1434,6 +1434,7 @@ function buildExportJson() {
       if (f.formatOptions) base.formatOptions = f.formatOptions;
       if (f.pathDepth)     base.pathDepth = f.pathDepth;
       if (f.placeholder !== undefined && f.placeholder !== null) base.placeholder = f.placeholder;
+      if (f.mergeWithNext) base.mergeWithNext = true;
       return base;
     }),
   }));
@@ -1548,6 +1549,7 @@ function loadConfig(json) {
       formatOptions: f.formatOptions || null,
       pathDepth:     f.pathDepth     || null,
       placeholder:   f.placeholder,  // undefined if not in JSON
+      mergeWithNext: f.mergeWithNext === true,
     })),
   }));
 
