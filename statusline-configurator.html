@@ -1277,9 +1277,7 @@ function toggleMergeNext(lineId, fieldId) {
   const field = line.fields.find(f => f.id === fieldId);
   if (!field) return;
   field.mergeWithNext = !field.mergeWithNext;
-  renderLines();
-  renderPreview();
-  updateExportTextarea();
+  render();
 }
 
 // ─── Drag & Drop (Sortable.js) ────────────────────────────────────────────
