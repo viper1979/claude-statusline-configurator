@@ -597,10 +597,11 @@ function Get-RateLimitsData {
 .SYNOPSIS
     Computes derived fields and injects them into $Data via Add-Member.
 .DESCRIPTION
-    General-purpose hook for all derived field computations. Currently computes
-    context_window.cache_efficiency = cache_read_input_tokens / total_input_tokens * 100.
-    Only sets the field when total_input_tokens > 0 to avoid division by zero.
-    Add additional derived field logic here as new fields are introduced.
+    General-purpose hook for all derived field computations. Computes:
+    - context_window.cache_efficiency = cache_read_input_tokens / total_input_tokens * 100
+    - context_window.used_tokens      = context_window_size * used_percentage / 100
+    - context_window.remain_tokens    = context_window_size * remaining_percentage / 100
+    Guards prevent computation when required inputs are null or zero.
 .PARAMETER Data
     PSCustomObject parsed from Claude Code's JSON input (already enriched).
 #>
@@ -614,6 +615,23 @@ function Compute-DerivedFields {
         $efficiency = [Math]::Round([double]$cacheRead / [double]$totalInput * 100, 1)
         $Data.context_window | Add-Member -NotePropertyName 'cache_efficiency' `
                                           -NotePropertyValue $efficiency -Force
+    }
+
+    # used_tokens = floor(context_window_size * used_percentage / 100)
+    $ctxSize  = Get-NestedValue $Data 'context_window.context_window_size'
+    $usedPct  = Get-NestedValue $Data 'context_window.used_percentage'
+    if ($null -ne $ctxSize -and [double]$ctxSize -gt 0 -and $null -ne $usedPct) {
+        $usedTokens = [math]::Floor([double]$ctxSize * [double]$usedPct / 100)
+        $Data.context_window | Add-Member -NotePropertyName 'used_tokens' `
+                                          -NotePropertyValue $usedTokens -Force
+    }
+
+    # remain_tokens = floor(context_window_size * remaining_percentage / 100)
+    $remainPct = Get-NestedValue $Data 'context_window.remaining_percentage'
+    if ($null -ne $ctxSize -and [double]$ctxSize -gt 0 -and $null -ne $remainPct) {
+        $remainTokens = [math]::Floor([double]$ctxSize * [double]$remainPct / 100)
+        $Data.context_window | Add-Member -NotePropertyName 'remain_tokens' `
+                                          -NotePropertyValue $remainTokens -Force
     }
 }
 

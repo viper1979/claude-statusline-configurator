@@ -1112,6 +1112,49 @@ Describe 'Compute-DerivedFields' {
         # Get-NestedValue returns $null for both paths; guard prevents Add-Member
         $data.PSObject.Properties['context_window'] | Should -BeNullOrEmpty
     }
+
+    It 'sets used_tokens correctly' {
+        $data = [PSCustomObject]@{
+            context_window = [PSCustomObject]@{
+                context_window_size = 200000
+                used_percentage     = 15
+            }
+        }
+        Compute-DerivedFields -Data $data
+        $data.context_window.used_tokens | Should -Be 30000
+    }
+
+    It 'sets remain_tokens correctly' {
+        $data = [PSCustomObject]@{
+            context_window = [PSCustomObject]@{
+                context_window_size  = 200000
+                remaining_percentage = 85
+            }
+        }
+        Compute-DerivedFields -Data $data
+        $data.context_window.remain_tokens | Should -Be 170000
+    }
+
+    It 'does not set used_tokens when context_window_size is 0' {
+        $data = [PSCustomObject]@{
+            context_window = [PSCustomObject]@{
+                context_window_size = 0
+                used_percentage     = 15
+            }
+        }
+        Compute-DerivedFields -Data $data
+        $data.context_window.PSObject.Properties['used_tokens'] | Should -BeNullOrEmpty
+    }
+
+    It 'does not set remain_tokens when remaining_percentage is null' {
+        $data = [PSCustomObject]@{
+            context_window = [PSCustomObject]@{
+                context_window_size = 200000
+            }
+        }
+        Compute-DerivedFields -Data $data
+        $data.context_window.PSObject.Properties['remain_tokens'] | Should -BeNullOrEmpty
+    }
 }
 
 Describe 'new_fields_indicator logging' {
