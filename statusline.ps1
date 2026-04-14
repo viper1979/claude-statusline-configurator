@@ -548,6 +548,74 @@ function Build-Groups {
 
 <#
 .SYNOPSIS
+    Renders all configured lines with column alignment via two-pass rendering.
+.DESCRIPTION
+    Pass 1: Renders each group of fields per line and measures visible width.
+    Pass 2: Pads each group to the maximum width of that group position across all lines.
+    The last group in each line is never padded (no trailing whitespace).
+.PARAMETER Lines
+    Array of line config objects (each with a .fields array).
+.PARAMETER Data
+    PSCustomObject parsed from Claude Code's JSON input.
+.OUTPUTS
+    All non-empty rendered lines joined by newline.
+#>
+function Format-Lines-Aligned {
+    param(
+        [array]$Lines,
+        [PSCustomObject]$Data
+    )
+
+    # Pass 1: render all groups for all lines, measure visible widths
+    $allLineGroups = [System.Collections.Generic.List[object]]::new()
+    foreach ($line in $Lines) {
+        if (-not $line.fields -or $line.fields.Count -eq 0) {
+            $allLineGroups.Add(@())
+            continue
+        }
+        $groups = Build-Groups $line.fields
+        $renderedGroups = [System.Collections.Generic.List[string]]::new()
+        foreach ($group in $groups) {
+            $rendered = ($group | ForEach-Object { Format-Field $_ $Data }) -join ''
+            $renderedGroups.Add($rendered)
+        }
+        $allLineGroups.Add($renderedGroups.ToArray())
+    }
+
+    # Pass 2: compute max visible width per group position
+    $maxGroupCount = 0
+    foreach ($rg in $allLineGroups) { if ($rg.Count -gt $maxGroupCount) { $maxGroupCount = $rg.Count } }
+    $maxWidths = @(0) * [math]::Max(1, $maxGroupCount)
+    for ($g = 0; $g -lt $maxGroupCount; $g++) {
+        foreach ($renderedGroups in $allLineGroups) {
+            if ($g -lt $renderedGroups.Count) {
+                $w = Get-VisibleWidth $renderedGroups[$g]
+                if ($w -gt $maxWidths[$g]) { $maxWidths[$g] = $w }
+            }
+        }
+    }
+
+    # Pass 3: apply padding and join
+    $outputLines = [System.Collections.Generic.List[string]]::new()
+    foreach ($renderedGroups in $allLineGroups) {
+        if ($renderedGroups.Count -eq 0) { continue }
+        # Skip line if all groups are empty strings (field returned nothing)
+        if (($renderedGroups | Where-Object { $_ -ne '' } | Measure-Object).Count -eq 0) { continue }
+        $lineParts = [System.Collections.Generic.List[string]]::new()
+        for ($g = 0; $g -lt $renderedGroups.Count; $g++) {
+            $text    = $renderedGroups[$g]
+            $isLast  = $g -eq $renderedGroups.Count - 1
+            $padding = if (-not $isLast) { $maxWidths[$g] - (Get-VisibleWidth $text) } else { 0 }
+            $lineParts.Add($text + (' ' * [math]::Max(0, $padding)))
+        }
+        $outputLines.Add($lineParts -join '')
+    }
+
+    return $outputLines -join "`n"
+}
+
+<#
+.SYNOPSIS
     Renders a full configured line (all its fields joined) as an ANSI string.
 .PARAMETER Line
     PSCustomObject with a 'fields' array.
@@ -799,9 +867,8 @@ function Invoke-Main {
         }
     }
 
-    # Render each line
-    $output = $config.lines | ForEach-Object { Format-Line $_ $data } | Where-Object { $_ -ne '' }
-    return $output -join "`n"
+    # Render each line with two-pass column alignment
+    return Format-Lines-Aligned $config.lines $data
 }
 
 # ─── Script entry point ───────────────────────────────────────────────────

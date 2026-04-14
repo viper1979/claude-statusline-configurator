@@ -1271,3 +1271,81 @@ Describe 'Build-Groups' {
         $groups.Count | Should -Be 0
     }
 }
+
+Describe 'Format-Lines-Aligned' {
+    It 'renders single line without padding' {
+        $lines = @([PSCustomObject]@{
+            fields = @(
+                [PSCustomObject]@{ type = 'static'; text = 'hi'; fg = $null; bg = $null }
+            )
+        })
+        $result = Format-Lines-Aligned $lines ([PSCustomObject]@{})
+        $result | Should -Be 'hi'
+    }
+
+    It 'pads shorter group to match longer group across lines' {
+        $lines = @(
+            [PSCustomObject]@{ fields = @(
+                [PSCustomObject]@{ type = 'static'; text = 'hi';    fg = $null; bg = $null },
+                [PSCustomObject]@{ type = 'static'; text = ' | ';   fg = $null; bg = $null },
+                [PSCustomObject]@{ type = 'static'; text = 'world'; fg = $null; bg = $null }
+            )},
+            [PSCustomObject]@{ fields = @(
+                [PSCustomObject]@{ type = 'static'; text = 'hello'; fg = $null; bg = $null },
+                [PSCustomObject]@{ type = 'static'; text = ' | ';   fg = $null; bg = $null },
+                [PSCustomObject]@{ type = 'static'; text = 'x';     fg = $null; bg = $null }
+            )}
+        )
+        $result = Format-Lines-Aligned $lines ([PSCustomObject]@{})
+        $resultLines = $result -split "`n"
+        # Group 1: 'hi' padded to width of 'hello' (5), group 2: ' | ' (3), group 3: no padding on last
+        $resultLines[0] | Should -Be 'hi    | world'
+        $resultLines[1] | Should -Be 'hello | x'
+    }
+
+    It 'groups merged fields and aligns by group width' {
+        $lines = @(
+            [PSCustomObject]@{ fields = @(
+                [PSCustomObject]@{ type = 'static'; text = 'a'; fg = $null; bg = $null; mergeWithNext = $true },
+                [PSCustomObject]@{ type = 'static'; text = 'b'; fg = $null; bg = $null },
+                [PSCustomObject]@{ type = 'static'; text = 'X'; fg = $null; bg = $null }
+            )},
+            [PSCustomObject]@{ fields = @(
+                [PSCustomObject]@{ type = 'static'; text = 'longgroup'; fg = $null; bg = $null },
+                [PSCustomObject]@{ type = 'static'; text = 'Y';         fg = $null; bg = $null }
+            )}
+        )
+        $result = Format-Lines-Aligned $lines ([PSCustomObject]@{})
+        $resultLines = $result -split "`n"
+        # Group 1: 'ab' (2 chars) vs 'longgroup' (9 chars) → 'ab' padded to 9
+        $resultLines[0] | Should -Be 'ab       X'
+        $resultLines[1] | Should -Be 'longgroupY'
+    }
+
+    It 'skips empty lines' {
+        $lines = @(
+            [PSCustomObject]@{ fields = @() },
+            [PSCustomObject]@{ fields = @(
+                [PSCustomObject]@{ type = 'static'; text = 'ok'; fg = $null; bg = $null }
+            )}
+        )
+        $result = Format-Lines-Aligned $lines ([PSCustomObject]@{})
+        $result | Should -Be 'ok'
+    }
+
+    It 'does not pad the last group of each line' {
+        $lines = @(
+            [PSCustomObject]@{ fields = @(
+                [PSCustomObject]@{ type = 'static'; text = 'short'; fg = $null; bg = $null }
+            )},
+            [PSCustomObject]@{ fields = @(
+                [PSCustomObject]@{ type = 'static'; text = 'much longer text'; fg = $null; bg = $null }
+            )}
+        )
+        $result = Format-Lines-Aligned $lines ([PSCustomObject]@{})
+        $resultLines = $result -split "`n"
+        # Last group — no trailing padding on either line
+        $resultLines[0] | Should -Be 'short'
+        $resultLines[1] | Should -Be 'much longer text'
+    }
+}
