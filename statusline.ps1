@@ -585,7 +585,7 @@ function Format-Lines-Aligned {
     # Pass 2: compute max visible width per group position
     $maxGroupCount = 0
     foreach ($rg in $allLineGroups) { if ($rg.Count -gt $maxGroupCount) { $maxGroupCount = $rg.Count } }
-    $maxWidths = @(0) * [math]::Max(1, $maxGroupCount)
+    $maxWidths = [int[]]::new([math]::Max(1, $maxGroupCount))
     for ($g = 0; $g -lt $maxGroupCount; $g++) {
         foreach ($renderedGroups in $allLineGroups) {
             if ($g -lt $renderedGroups.Count) {
@@ -600,7 +600,7 @@ function Format-Lines-Aligned {
     foreach ($renderedGroups in $allLineGroups) {
         if ($renderedGroups.Count -eq 0) { continue }
         # Skip line if all groups are empty strings (field returned nothing)
-        if (($renderedGroups | Where-Object { $_ -ne '' } | Measure-Object).Count -eq 0) { continue }
+        if (($renderedGroups | Where-Object { (Get-VisibleWidth $_) -gt 0 } | Measure-Object).Count -eq 0) { continue }
         $lineParts = [System.Collections.Generic.List[string]]::new()
         for ($g = 0; $g -lt $renderedGroups.Count; $g++) {
             $text    = $renderedGroups[$g]

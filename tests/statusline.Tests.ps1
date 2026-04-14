@@ -1348,4 +1348,26 @@ Describe 'Format-Lines-Aligned' {
         $resultLines[0] | Should -Be 'short'
         $resultLines[1] | Should -Be 'much longer text'
     }
+
+    It 'pads correctly when groups contain ANSI color codes' {
+        # ESC[31m = red, ESC[0m = reset — 'hi' has 2 visible chars despite ANSI wrapper
+        $red   = "$([char]27)[31m"
+        $reset = "$([char]27)[0m"
+        $lines = @(
+            [PSCustomObject]@{ fields = @(
+                [PSCustomObject]@{ type = 'static'; text = "${red}hi${reset}";    fg = $null; bg = $null },
+                [PSCustomObject]@{ type = 'static'; text = 'X';                  fg = $null; bg = $null }
+            )},
+            [PSCustomObject]@{ fields = @(
+                [PSCustomObject]@{ type = 'static'; text = 'hello'; fg = $null; bg = $null },
+                [PSCustomObject]@{ type = 'static'; text = 'Y';     fg = $null; bg = $null }
+            )}
+        )
+        $result = Format-Lines-Aligned $lines ([PSCustomObject]@{})
+        $resultLines = $result -split "`n"
+        # Group 1: 'hi' (2 visible) padded to width of 'hello' (5) → 3 spaces appended after ANSI sequence
+        # Visible: 'hi   X' and 'helloY'
+        $resultLines[0] | Should -Match 'hi.*   X$'
+        $resultLines[1] | Should -Be 'helloY'
+    }
 }
