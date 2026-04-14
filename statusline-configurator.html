@@ -998,29 +998,12 @@ function renderThemeTab() {
       `).join('')
     : '';
 
-  // Settings section appended after theme content in both empty and non-empty state
-  const settingsHtml = `
-    <div style="margin-top:16px;border-top:1px solid var(--color-border);padding-top:12px;">
-      <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:6px;">Einstellungen</div>
-      <div>
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;">
-          <input type="checkbox" id="logNewFieldsToggle"
-                 onchange="state.logNewFields = this.checked; updateExportTextarea();"
-                 ${state.logNewFields ? 'checked' : ''}
-                 title="Unbekannte Payload-Keys in statusline-new-fields.log schreiben">
-          Neue Felder protokollieren
-        </label>
-      </div>
-    </div>
-  `;
-
   el.innerHTML = themes.length === 0
     ? `
         <p style="font-size:12px;color:var(--color-text-muted);margin-bottom:12px;">
           Noch kein Theme vorhanden.
         </p>
         <button class="btn" onclick="createTheme()">+ Neues Theme erstellen</button>
-        ${settingsHtml}
       `
     : `
         <div style="margin-bottom:14px;">
@@ -1075,7 +1058,6 @@ function renderThemeTab() {
             <button class="btn" onclick="cancelThemePreview()">Abbrechen</button>
           </div>
         ` : ''}
-      ${settingsHtml}
       `;
 }
 
@@ -1799,9 +1781,16 @@ function renderEditTabGeneral() {
     `;
   } else if (f.type === 'new_fields_indicator') {
     el.innerHTML = `
-      <p style="font-size:12px;color:var(--color-text-muted);line-height:1.5;">
+      <p style="font-size:12px;color:var(--color-text-muted);line-height:1.5;margin-bottom:12px;">
         Zeigt an, ob der aktuelle JSON-Payload Keys enthält, die dem Konfigurator noch unbekannt sind.<br>
         Beispielausgabe: <code>● 3 neue Felder</code>
+      </p>
+      <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;">
+        <input type="checkbox" id="edit-log-new-fields" ${state.logNewFields ? 'checked' : ''}>
+        <span>In Log-Datei schreiben</span>
+      </label>
+      <p style="font-size:10px;color:var(--color-text-muted);margin-top:4px;margin-left:24px;">
+        Pfad: &lt;scriptdir&gt;/statusline-new-fields.log
       </p>
     `;
   } else {
@@ -2191,6 +2180,10 @@ function saveEditDialog() {
   if (fgInput) _editDraft.fg = fgInput.value;
   const bgInput = document.getElementById('edit-bg');
   if (bgInput) _editDraft.bg = bgInput.value;
+
+  // Sync logNewFields from new_fields_indicator edit dialog
+  const logNewFieldsEl = document.getElementById('edit-log-new-fields');
+  if (logNewFieldsEl !== null) state.logNewFields = logNewFieldsEl.checked;
 
   // Apply draft to actual state
   if (source === 'line') {
