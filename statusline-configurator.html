@@ -1408,6 +1408,38 @@ function initSortable() {
     });
   });
 }
+/**
+ * Groups fields into column groups based on mergeWithNext flags.
+ * Mirrors the PS1 Build-Groups logic exactly.
+ * @param {Array} fields - Array of field objects from a line.
+ * @returns {Array<Array>} Array of groups, each group is an array of fields.
+ */
+function buildGroups(fields) {
+  const groups = [];
+  let current = [];
+  for (const field of fields) {
+    current.push(field);
+    if (!field.mergeWithNext) {
+      groups.push(current);
+      current = [];
+    }
+  }
+  if (current.length > 0) groups.push(current);
+  return groups;
+}
+
+/**
+ * Returns the visible character count of an HTML snippet by stripping tags.
+ * Used for column width measurement in the preview alignment.
+ * @param {string} html - HTML string (spans with colors, no ANSI codes).
+ * @returns {number} Visible text length.
+ */
+function getVisibleWidth(html) {
+  const tmp = document.createElement('span');
+  tmp.innerHTML = html;
+  return tmp.textContent.length;
+}
+
 function renderPreview() {
   const out = document.getElementById('preview-output');
   if (state.lines.length === 0) {
@@ -1415,21 +1447,45 @@ function renderPreview() {
     return;
   }
 
-  const lines = state.lines.map(line => {
-    if (line.fields.length === 0) {
+  // Pass 1: render all groups for all lines, measure visible widths
+  const allLineGroups = state.lines.map(line => {
+    if (line.fields.length === 0) return [];
+    return buildGroups(line.fields).map(groupFields =>
+      groupFields.map(f => {
+        const previewOverride = (_editDraft && _editDraft.id === f.id)
+          ? (_editDraft.previewValue ?? f.previewValue ?? null)
+          : (f.previewValue ?? null);
+        const fieldThemeId  = f.themeId ?? (_themePreviewId ?? state.activeTheme);
+        const fieldThemeObj = fieldThemeId ? state.themes.find(t => t.id === fieldThemeId) ?? null : null;
+        return renderFieldHtml(f, SAMPLE_DATA, fieldThemeObj, previewOverride);
+      }).join('')
+    );
+  });
+
+  // Pass 2: max visible width per group position
+  const maxGroupCount = Math.max(0, ...allLineGroups.map(g => g.length));
+  const maxWidths = new Array(maxGroupCount).fill(0);
+  for (let g = 0; g < maxGroupCount; g++) {
+    for (const lineGroups of allLineGroups) {
+      if (g < lineGroups.length) {
+        const w = getVisibleWidth(lineGroups[g]);
+        if (w > maxWidths[g]) maxWidths[g] = w;
+      }
+    }
+  }
+
+  // Pass 3: pad and join per line
+  const lines = allLineGroups.map(lineGroups => {
+    if (lineGroups.length === 0) {
       return '<span style="color:var(--color-text-muted);">(leere Zeile)</span>';
     }
-    return line.fields.map(f => {
-      // Use _editDraft.previewValue while the dialog is open (live updates), fall back to
-      // f.previewValue once the dialog is saved and closed so the chosen value persists.
-      const previewOverride = (_editDraft && _editDraft.id === f.id)
-        ? (_editDraft.previewValue ?? f.previewValue ?? null)
-        : (f.previewValue ?? null);
-      // Per-field theme: if the field has its own themeId, use it; otherwise fall back to
-      // the hover-preview theme (_themePreviewId) or the globally active theme.
-      const fieldThemeId  = f.themeId ?? (_themePreviewId ?? state.activeTheme);
-      const fieldThemeObj = fieldThemeId ? state.themes.find(t => t.id === fieldThemeId) ?? null : null;
-      return renderFieldHtml(f, SAMPLE_DATA, fieldThemeObj, previewOverride);
+    return lineGroups.map((groupHtml, g) => {
+      const isLast  = g === lineGroups.length - 1;
+      const padding = isLast ? 0 : maxWidths[g] - getVisibleWidth(groupHtml);
+      if (padding > 0) {
+        return groupHtml + `<span style="white-space:pre">${' '.repeat(padding)}</span>`;
+      }
+      return groupHtml;
     }).join('');
   });
 
