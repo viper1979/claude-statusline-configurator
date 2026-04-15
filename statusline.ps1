@@ -242,10 +242,12 @@ function Format-Duration {
     )
     $TotalSeconds = try { [long][double]$TotalSeconds } catch { return '?' }
     if ($TotalSeconds -lt 0) { $TotalSeconds = 0 }
-    $totalMinutes = [long]($TotalSeconds / 60)
-    $hours        = [long]($totalMinutes / 60)
+    # Math::Truncate statt [long]-Cast, da PowerShell bei [long] kaufmännisch rundet
+    # statt abzuschneiden (z.B. [long](145.73) ergibt 146 statt 145)
+    $totalMinutes = [long][Math]::Truncate(($TotalSeconds / 60))
+    $hours        = [long][Math]::Truncate(($totalMinutes / 60))
     $minutes      = $totalMinutes % 60
-    $days         = [long]($hours / 24)
+    $days         = [long][Math]::Truncate(($hours / 24))
     $remHours     = $hours % 24
 
     switch ($Format) {
