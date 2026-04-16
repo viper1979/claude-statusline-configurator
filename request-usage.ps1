@@ -45,20 +45,29 @@ try {
     exit 1
 }
 
-# Convert ISO 8601 resets_at string to Unix timestamp (seconds since epoch)
+# Convert ISO 8601 resets_at string (or auto-parsed DateTime) to Unix timestamp (seconds since epoch)
 function ConvertTo-UnixTimestamp {
     <#
     .SYNOPSIS
-        Converts an ISO 8601 date string to a Unix timestamp (seconds since epoch).
+        Converts an ISO 8601 date string or DateTime object to a Unix timestamp (seconds since epoch).
     .PARAMETER IsoDate
-        The ISO 8601 date string to convert (e.g. "2026-04-08T15:00:00Z").
+        The ISO 8601 date string (e.g. "2026-04-08T15:00:00Z") or a [datetime]/[DateTimeOffset] object.
+        PowerShell 7's Invoke-RestMethod auto-parses ISO 8601 strings in JSON to [datetime] objects,
+        so this function handles both types explicitly to avoid US-culture string coercion issues.
     .OUTPUTS
         [int] Unix timestamp in seconds, or 0 if the input is null/empty or cannot be parsed.
     #>
-    param([string]$IsoDate)
+    param([object]$IsoDate)
     if (-not $IsoDate) { return 0 }
     try {
-        return [int][DateTimeOffset]::Parse($IsoDate).ToUnixTimeSeconds()
+        if ($IsoDate -is [DateTimeOffset]) {
+            return [int]$IsoDate.ToUnixTimeSeconds()
+        }
+        if ($IsoDate -is [datetime]) {
+            # ToUniversalTime() correctly handles both DateTimeKind.Utc and DateTimeKind.Local
+            return [int][DateTimeOffset]::new($IsoDate.ToUniversalTime(), [TimeSpan]::Zero).ToUnixTimeSeconds()
+        }
+        return [int][DateTimeOffset]::Parse([string]$IsoDate).ToUnixTimeSeconds()
     } catch {
         return 0
     }
