@@ -1595,7 +1595,7 @@ function buildExportJson() {
         else if (f.bgOverride) { base.bgOverride = true; }
         if (f.themeId) base.themeId = f.themeId;
         if (f.progressStyle && f.type === 'progressbar') base.progressStyle = f.progressStyle;
-        if (f.type === 'progressbar' && f.barBrackets !== undefined) base.barBrackets = f.barBrackets;
+        if (f.type === 'progressbar' && f.barBrackets !== undefined) base.barBrackets = Boolean(f.barBrackets);
         if (f.type === 'progressbar' && f.barCharset)               base.barCharset  = f.barCharset;
         if (f.dataType)      base.dataType = f.dataType;
         if (f.format)        base.format = f.format;
@@ -1710,7 +1710,8 @@ function loadConfig(json) {
         return s;
       })(),
       barBrackets: (() => {
-        if (f.barBrackets !== undefined) return f.barBrackets;
+        if (f.barBrackets !== undefined && f.barBrackets !== null)
+          return Boolean(f.barBrackets);
         // Migrate: 'slim' had no brackets; everything else had brackets
         return f.progressStyle !== 'slim';
       })(),
