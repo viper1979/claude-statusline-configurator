@@ -2345,7 +2345,7 @@ function saveEditDialog() {
 
   // Read Datentyp tab values into draft (only when tab is visible and type did not just switch)
   const isDatatypeTabVisible =
-    document.querySelector('.edit-tab-btn[data-tab="datatype"]')?.style.display !== 'none';
+    (document.querySelector('.edit-tab-btn[data-tab="datatype"]')?.style.display ?? 'none') !== 'none';
   const typeEl = document.getElementById('edit-datatype');
   if (typeEl && !typeJustSwitched && isDatatypeTabVisible) {
     _editDraft.dataType = typeEl.value;
