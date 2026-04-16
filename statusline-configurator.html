@@ -199,6 +199,15 @@
       border-radius: 3px;
     }
     .btn-icon:hover { color: var(--color-text); background: var(--color-surface-2); }
+    .chip-connector {
+      display: inline-block;
+      width: 4px;
+      height: 22px;
+      background: var(--color-surface-2);
+      border-top: 1px solid var(--color-border);
+      border-bottom: 1px solid var(--color-border);
+      vertical-align: middle;
+    }
     .line-drag-handle {
       cursor: grab;
       color: var(--color-text-muted);
@@ -1226,7 +1235,13 @@ function renderLines() {
                   border-radius:var(--radius);padding:6px 8px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
         ${line.fields.length === 0
           ? '<span style="color:var(--color-text-muted);font-size:12px;pointer-events:none;">Felder hier hineinziehen…</span>'
-          : line.fields.map(f => renderFieldChip(f, line.id)).join('')
+          : line.fields.reduce((html, f, idx) => {
+              const prevField  = line.fields[idx - 1];
+              const mergedLeft  = !!(prevField?.mergeWithNext);
+              const mergedRight = !!f.mergeWithNext;
+              if (mergedLeft) html += '<span class="chip-connector"></span>';
+              return html + renderFieldChip(f, line.id, mergedLeft, mergedRight);
+            }, '')
         }
       </div>
     `;
@@ -1238,7 +1253,7 @@ function renderLines() {
   if (alignEl) alignEl.checked = state.columnAlignmentEnabled;
 }
 
-function renderFieldChip(field, lineId) {
+function renderFieldChip(field, lineId, mergedLeft = false, mergedRight = false) {
   // Apply the same priority chain as renderFieldHtml so the chip reflects
   // the effective color (Override > Field-Theme > Global Theme > Standard).
   const fieldThemeId = field.themeId ?? state.activeTheme;
@@ -1253,11 +1268,19 @@ function renderFieldChip(field, lineId) {
   const mergeActive = !!field.mergeWithNext;
   const mergeColor  = mergeActive ? 'var(--color-accent)' : 'var(--color-text-muted)';
   const mergeIcon   = mergeActive ? '→' : '↝';
+  // Border-radius and border adapt to merge context so connected chips appear joined.
+  const borderRadius = (mergedLeft && mergedRight) ? '0'
+                     : mergedLeft                  ? '0 4px 4px 0'
+                     : mergedRight                 ? '4px 0 0 4px'
+                     :                              '4px';
+  const borderLeft   = mergedLeft  ? 'none' : '1px solid var(--color-border)';
+  const borderRight  = mergedRight ? 'none' : '1px solid var(--color-border)';
   return `
     <span class="field-chip" data-field-id="${field.id}" data-line-id="${lineId}"
           style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;
-                 border-radius:4px;font-size:12px;background:var(--color-surface-2);
-                 border:1px solid var(--color-border);${bg}${fg}cursor:default;">
+                 border-radius:${borderRadius};font-size:12px;background:var(--color-surface-2);
+                 border-top:1px solid var(--color-border);border-bottom:1px solid var(--color-border);
+                 border-left:${borderLeft};border-right:${borderRight};${bg}${fg}cursor:default;">
       <span>${label}</span>
       <button class="btn-icon" title="Mit nächstem Feld gruppieren (Tab-Ausrichtung)"
               onclick="toggleMergeNext('${lineId}','${field.id}')"
