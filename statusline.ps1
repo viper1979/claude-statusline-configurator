@@ -289,7 +289,7 @@ function Format-FieldValue {
     # Fallback for null values — use a sensible zero-value per data type
     if ($null -eq $Value) {
         switch ($DataType) {
-            { $_ -in 'number','currency','duration','duration_ms' } { $Value = 0 }
+            { $_ -in 'number','currency','duration_ms' } { $Value = 0 }
             'unix_timestamp' { $Value = 0 }
             'bool'           { $Value = $false }
             default          { $Value = '' }
@@ -302,9 +302,6 @@ function Format-FieldValue {
             $remaining    = [DateTimeOffset]::FromUnixTimeSeconds([long]$Value) - [DateTimeOffset]::UtcNow
             $totalSeconds = [long]$remaining.TotalSeconds
             return Format-Duration -TotalSeconds $totalSeconds -Format $Format
-        }
-        'duration' {
-            return Format-Duration -TotalSeconds ([long][double]$Value) -Format $Format
         }
         'duration_ms' {
             # Value is in milliseconds (e.g. cost.total_duration_ms) — convert to seconds first

@@ -444,27 +444,6 @@ Describe 'Format-FieldValue' {
             Should -Be '0h 0m'
     }
 
-    It 'formats duration 5000 seconds as hours format: 1h 23m' {
-        Format-FieldValue -Value 5000 -DataType 'duration' -Format 'hours' -FormatOptions $null |
-            Should -Be '1h 23m'
-    }
-
-    It 'formats duration 90061 seconds as short format with days: 1d 1h 1m' {
-        Format-FieldValue -Value 90061 -DataType 'duration' -Format 'short' -FormatOptions $null |
-            Should -Be '1d 1h 1m'
-    }
-
-    It 'formats duration 90061 seconds as long format with days: 1d 1hr 1min' {
-        Format-FieldValue -Value 90061 -DataType 'duration' -Format 'long' -FormatOptions $null |
-            Should -Be '1d 1hr 1min'
-    }
-
-    It 'formats duration under 1 day as short without day prefix' {
-        # 3661 seconds = 1h 1m
-        Format-FieldValue -Value 3661 -DataType 'duration' -Format 'short' -FormatOptions $null |
-            Should -Be '1h 1m'
-    }
-
     It 'formats duration_ms 5000000 ms as hours format: 1h 23m' {
         # 5000000 ms = 5000 s = 83m = 1h 23m
         Format-FieldValue -Value 5000000 -DataType 'duration_ms' -Format 'hours' -FormatOptions $null |
@@ -489,11 +468,6 @@ Describe 'Format-FieldValue' {
     }
 
     # --- null fallback tests ---
-    It 'returns 0h 0m for null duration value' {
-        Format-FieldValue -Value $null -DataType 'duration' -Format 'short' -FormatOptions $null |
-            Should -Be '0h 0m'
-    }
-
     It 'returns 0h 0m for null duration_ms value' {
         Format-FieldValue -Value $null -DataType 'duration_ms' -Format 'short' -FormatOptions $null |
             Should -Be '0h 0m'
