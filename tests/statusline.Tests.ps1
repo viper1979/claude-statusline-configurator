@@ -592,7 +592,7 @@ Describe 'Get-AllKeys' {
         }
         $keys = Get-AllKeys $data ''
         $keys | Should -Contain 'tags'
-        # null leaf values are skipped — they represent absent containers and should not appear as new fields
+        # null leaf values are skipped — the API returns null for absent or unavailable data, which should not trigger new-field detection
         $keys | Should -Not -Contain 'missing'
     }
 
