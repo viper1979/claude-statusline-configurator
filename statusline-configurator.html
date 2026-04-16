@@ -1228,7 +1228,7 @@ function renderLines() {
             ${line.mergeWithNext ? '→' : '↝'}
           </button>
         ` : ''}
-        <button class="btn btn-danger" style="padding:2px 8px;font-size:11px;" onclick="removeLine('${line.id}')">✕ Entfernen</button>
+        <button class="btn btn-danger" title="Zeile entfernen" style="padding:2px 8px;font-size:11px;" onclick="removeLine('${line.id}')">✕ Entfernen</button>
       </div>
       <div class="line-drop-zone" data-line-id="${line.id}"
            style="min-height:44px;background:var(--color-surface);border:1.5px dashed var(--color-border);
