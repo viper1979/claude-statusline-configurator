@@ -585,14 +585,27 @@ Describe 'Get-AllKeys' {
         $keys | Should -Contain 'rate_limits.five_hour.used_percentage'
     }
 
-    It 'returns array and null values as leaf keys' {
+    It 'returns array values as leaf keys and skips top-level null values' {
         $data = [PSCustomObject]@{
             tags    = @('a', 'b')
             missing = $null
         }
         $keys = Get-AllKeys $data ''
         $keys | Should -Contain 'tags'
-        $keys | Should -Contain 'missing'
+        # null leaf values are skipped — they represent absent containers and should not appear as new fields
+        $keys | Should -Not -Contain 'missing'
+    }
+
+    It 'skips null leaf values' {
+        $data = [PSCustomObject]@{
+            context_window = [PSCustomObject]@{
+                used_percentage = 42
+                current_usage   = $null
+            }
+        }
+        $keys = Get-AllKeys $data ''
+        $keys | Should -Contain 'context_window.used_percentage'
+        $keys | Should -Not -Contain 'context_window.current_usage'
     }
 
     It 'returns empty array for null input' {

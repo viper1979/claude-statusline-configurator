@@ -49,8 +49,8 @@ function Get-AllKeys {
         if ($_.Value -is [PSCustomObject]) {
             # Container object — recurse into children, do not add the parent key itself
             $result += Get-AllKeys $_.Value $key
-        } else {
-            # Leaf value (string, number, bool, array, null) — add directly
+        } elseif ($null -ne $_.Value) {
+            # Leaf value (string, number, bool, array) — add directly; skip null (container was absent)
             $result += $key
         }
     }
