@@ -2344,8 +2344,10 @@ function saveEditDialog() {
   }
 
   // Read Datentyp tab values into draft (only when tab is visible and type did not just switch)
+  const isDatatypeTabVisible =
+    document.querySelector('.edit-tab-btn[data-tab="datatype"]')?.style.display !== 'none';
   const typeEl = document.getElementById('edit-datatype');
-  if (typeEl && !typeJustSwitched) {
+  if (typeEl && !typeJustSwitched && isDatatypeTabVisible) {
     _editDraft.dataType = typeEl.value;
     const fmtRadio = document.querySelector('[name="edit-format"]:checked');
     _editDraft.format = fmtRadio ? fmtRadio.value : null;
