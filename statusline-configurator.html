@@ -2620,7 +2620,7 @@ function makeProgressBar(value, style, fg, brackets = true, charset = 'block', t
 /**
  * Formats a raw value according to dataType/format/formatOptions — mirrors PS Format-FieldValue.
  * @param {*}      value         - raw value from sample data
- * @param {string} dataType      - 'string'|'currency'|'number'|'bool'|'duration'|'duration_ms'|'unix_timestamp'
+ * @param {string} dataType      - 'string'|'currency'|'number'|'bool'|'duration_ms'|'unix_timestamp'
  * @param {string|null} format   - type-specific format string
  * @param {object|null} formatOptions - extra options (e.g. trueLabel/falseLabel for bool/custom)
  * @returns {string}
@@ -2661,18 +2661,6 @@ function formatFieldValue(value, dataType, format, formatOptions) {
       const h = Math.floor(diff / 3600);
       const m = Math.floor((diff % 3600) / 60);
       return `${h}h ${m}m`;
-    }
-    case 'duration': {
-      const secs = Math.max(0, Math.floor(Number(value)));
-      const d = Math.floor(secs / 86400);
-      const h = Math.floor((secs % 86400) / 3600);
-      const m = Math.floor((secs % 3600) / 60);
-      if (format === 'hours') return `${h}h ${m}m`;
-      if (format === 'long')  return d > 0 ? `${d}d ${h}hr ${m}min` : `${h}hr ${m}min`;
-      // 'short' — omit leading zero units
-      if (d > 0) return `${d}d ${h}h ${m}m`;
-      if (h > 0) return `${h}h ${m}m`;
-      return `${m}m`;
     }
     case 'duration_ms': {
       // Value is in milliseconds (e.g. cost.total_duration_ms) — convert to seconds first

@@ -269,7 +269,7 @@ function Format-Duration {
 .PARAMETER Value
     The raw value retrieved from the JSON payload.
 .PARAMETER DataType
-    One of: string | currency | bool | number | unix_timestamp | duration | duration_ms
+    One of: string | currency | bool | number | unix_timestamp | duration_ms
 .PARAMETER Format
     Format variant string matching the data type (e.g. 'k', 'short', 'checkmark').
     For unix_timestamp: value is treated as future epoch; past timestamps display as '0h 0m'.
