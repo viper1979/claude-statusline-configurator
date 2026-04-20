@@ -1,10 +1,12 @@
-# statusline.ps1 — Claude Code custom status line
+﻿# statusline.ps1 — Claude Code custom status line
 # Claude Code pipes the session JSON to stdin.
 # Reads statusline-config.json from the same directory as this script.
 
 Set-StrictMode -Off
 
-# Ensure stdout is UTF-8 so non-ASCII characters (progressbar, etc.) survive the pipe to Claude Code
+# Ensure stdin/stdout are UTF-8 so non-ASCII characters (progressbar, etc.) survive the pipe to Claude Code
+# InputEncoding guards against corrupted stdin JSON when the host console runs on CP850/CP1252
+[Console]::InputEncoding  = [System.Text.Encoding]::UTF8
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding           = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'SilentlyContinue'
