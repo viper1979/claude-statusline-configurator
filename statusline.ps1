@@ -449,7 +449,10 @@ function Format-Field {
                 }
             }
 
-            return "${fgAnsi}${bgAnsi}● ${count} neue Felder${resetAnsi}"
+            # Use Unicode code point instead of literal to avoid encoding issues when
+            # PowerShell reads the script without a UTF-8 BOM (Windows default ANSI page).
+            $bullet = [char]0x25CF
+            return "${fgAnsi}${bgAnsi}${bullet} ${count} neue Felder${resetAnsi}"
         }
         default {
             # type = 'field'
