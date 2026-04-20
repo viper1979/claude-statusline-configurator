@@ -1437,3 +1437,68 @@ Describe 'Format-Line-Group single line' {
         $result | Should -Be 'hi'
     }
 }
+
+Describe 'Encoding — new_fields_indicator emits UTF-8 bullet' {
+    # End-to-end byte-level assertion: spawn the script as a fresh pwsh subprocess,
+    # pipe stdin, capture raw stdout bytes, and verify the bullet character is
+    # emitted as its UTF-8 byte sequence (E2 97 8F = U+25CF ●). This guards against
+    # regressions where the script is parsed under a non-UTF-8 codepage and the
+    # literal bullet is corrupted into garbage bytes before output.
+
+    It 'emits bytes E2 97 8F for U+25CF in subprocess output' {
+        # Arrange: create a disposable temp dir with a copy of the script and a
+        # minimal config that declares a new_fields_indicator field plus a
+        # knownKeys list that does NOT contain the test input key.
+        $tempDir = [System.IO.Path]::Combine(
+            [System.IO.Path]::GetTempPath(),
+            [Guid]::NewGuid().ToString()
+        )
+        $null = New-Item -ItemType Directory -Path $tempDir -Force
+        try {
+            $srcScript  = Join-Path $PSScriptRoot '..' 'statusline.ps1'
+            $tempScript = Join-Path $tempDir    'statusline.ps1'
+            $tempConfig = Join-Path $tempDir    'statusline-config.json'
+            Copy-Item -Path $srcScript -Destination $tempScript
+
+            $configObj = @{
+                lines     = @(@{ fields = @(@{ type = 'new_fields_indicator' }) })
+                knownKeys = @('session_id')
+            }
+            $configJson = $configObj | ConvertTo-Json -Depth 5 -Compress
+            [System.IO.File]::WriteAllText(
+                $tempConfig,
+                $configJson,
+                [System.Text.UTF8Encoding]::new($false)
+            )
+
+            # Input JSON contains a key not in knownKeys → triggers new_fields_indicator
+            $inputJson = '{ "probe_unknown_key_for_encoding_test": 42 }'
+
+            # Act: launch pwsh as subprocess and capture raw stdout bytes
+            $psi = [System.Diagnostics.ProcessStartInfo]::new()
+            $psi.FileName = 'pwsh'
+            $psi.ArgumentList.Add('-NoProfile')
+            $psi.ArgumentList.Add('-File')
+            $psi.ArgumentList.Add($tempScript)
+            $psi.RedirectStandardInput  = $true
+            $psi.RedirectStandardOutput = $true
+            $psi.UseShellExecute        = $false
+
+            $proc = [System.Diagnostics.Process]::Start($psi)
+            $proc.StandardInput.Write($inputJson)
+            $proc.StandardInput.Close()
+
+            $ms = [System.IO.MemoryStream]::new()
+            $proc.StandardOutput.BaseStream.CopyTo($ms)
+            $proc.WaitForExit()
+            $rawBytes = $ms.ToArray()
+
+            # Assert: the raw output must contain the UTF-8 byte sequence for ●
+            $hex = ($rawBytes | ForEach-Object { '{0:X2}' -f $_ }) -join ''
+            $hex | Should -Match 'E2978F'
+        }
+        finally {
+            Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
