@@ -231,7 +231,7 @@ function Format-ProgressBar {
 .PARAMETER TotalSeconds
     Non-negative integer number of seconds.
 .PARAMETER Format
-    'hours' → "75h 32m" | 'short' → "1d 4h 32m" | 'long' → "1d 4hr 32min"
+    'hours' → "75h 32m" | 'short' → "1d 4h 32m" | 'long' → "1d 4hr 32min" | 'days_hours' → "1d 23h" / "23h" | 'days_hours_pad' → "0d 23h"
 .OUTPUTS
     Formatted duration string.
 #>
@@ -256,6 +256,11 @@ function Format-Duration {
             if ($days -gt 0) { return "${days}d ${remHours}hr ${minutes}min" }
             return "${hours}hr ${minutes}min"
         }
+        'days_hours' {
+            if ($days -gt 0) { return "${days}d ${remHours}h" }
+            return "${hours}h"
+        }
+        'days_hours_pad' { return "${days}d ${remHours}h" }
         default { # 'short'
             if ($days -gt 0) { return "${days}d ${remHours}h ${minutes}m" }
             return "${hours}h ${minutes}m"

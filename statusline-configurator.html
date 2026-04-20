@@ -5,6 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Claude Code Statusline Configurator</title>
   <style>
+    @font-face {
+      font-family: 'MesloLGS NF';
+      src: url('assets/fonts/MesloLGS-NF-Regular.ttf') format('truetype');
+      font-weight: normal;
+      font-style: normal;
+      font-display: swap;
+    }
+
     :root {
       --color-bg: #161616;
       --color-surface: #1f1f1f;
@@ -139,6 +147,8 @@
       border-radius: var(--radius);
       padding: 10px 16px;
       min-height: 36px;
+      letter-spacing: 0;
+      line-height: 1.25;
     }
 
     /* ---------- Export ---------- */
@@ -2057,7 +2067,7 @@ const DATATYPE_FORMATS = {
   currency:       [],
   bool:           [['true_false','true / false'],['yes_no','yes / no'],['checkmark','✓ / ✗'],['custom','Benutzerdefiniert']],
   number:         [['raw','Rohwert (12345678)'],['auto','Auto (456 / 33k / 939m / 12b)']],
-  unix_timestamp: [['hours','Stunden (75h 32m)'],['short','Kurz (1d 4h 32m)'],['long','Lang (1d 4hr 32min)'],['raw','Rohwert']],
+  unix_timestamp: [['hours','Stunden (75h 32m)'],['short','Kurz (1d 4h 32m)'],['long','Lang (1d 4hr 32min)'],['days_hours','Tage + Stunden (1d 23h)'],['days_hours_pad','Tage + Stunden mit 0d (0d 23h)'],['raw','Rohwert']],
   duration_ms:    [['hours','Stunden (75h 32m)'],['short','Kurz (1d 4h 32m)'],['long','Lang (1d 4hr 32min)']],
 };
 
@@ -2682,11 +2692,26 @@ function formatFieldValue(value, dataType, format, formatOptions) {
       }
     }
     case 'unix_timestamp': {
-      const now  = Math.floor(Date.now() / 1000);
-      const diff = Math.max(0, Number(value) - now);
-      const h = Math.floor(diff / 3600);
-      const m = Math.floor((diff % 3600) / 60);
-      return `${h}h ${m}m`;
+      const now        = Math.floor(Date.now() / 1000);
+      const diff       = Math.max(0, Number(value) - now);
+      const totalHours = Math.floor(diff / 3600);
+      const days       = Math.floor(diff / 86400);
+      const remHours   = Math.floor((diff % 86400) / 3600);
+      const minutes    = Math.floor((diff % 3600) / 60);
+      switch (format) {
+        case 'raw':            return String(value);
+        case 'hours':          return `${totalHours}h ${minutes}m`;
+        case 'long':           return days > 0
+          ? `${days}d ${remHours}hr ${minutes}min`
+          : `${totalHours}hr ${minutes}min`;
+        case 'days_hours':     return days > 0
+          ? `${days}d ${remHours}h`
+          : `${totalHours}h`;
+        case 'days_hours_pad': return `${days}d ${remHours}h`;
+        default: /* 'short' */ return days > 0
+          ? `${days}d ${remHours}h ${minutes}m`
+          : `${totalHours}h ${minutes}m`;
+      }
     }
     case 'duration_ms': {
       // Value is in milliseconds (e.g. cost.total_duration_ms) — convert to seconds first
@@ -2720,7 +2745,7 @@ function renderFieldHtml(field, data, previewTheme = null, previewOverride = nul
   const bgIsOverride = field.bgOverride ?? (field.bg !== null && field.bg !== undefined);
   const fg = fgIsOverride ? field.fg : (previewTheme?.fieldFg ?? null);
   const bg = bgIsOverride ? field.bg : (previewTheme?.fieldBg ?? null);
-  const style = [fg ? `color:${fg};` : '', bg ? `background:${bg};padding:1px 3px;` : ''].join('');
+  const style = [fg ? `color:${fg};` : '', bg ? `background:${bg};` : ''].join('');
 
   if (field.type === 'static') {
     return `<span style="${style}">${escapeHtml(field.text || '')}</span>`;
@@ -2748,7 +2773,7 @@ function renderFieldHtml(field, data, previewTheme = null, previewOverride = nul
     const barFgOverride = fgIsOverride ? (field.fg ?? null) : null;
     const { bar, color } = makeProgressBar(raw, field.progressStyle || 'color-coded', barFgOverride, brackets, charset, previewTheme?.progressThresholds || null);
     const colorStyle = color ? `color:${color};` : '';
-    const finalStyle = [colorStyle, bg ? `background:${bg};padding:1px 3px;` : ''].join('');
+    const finalStyle = [colorStyle, bg ? `background:${bg};` : ''].join('');
     return `<span style="${finalStyle}">${bar}</span>`;
   }
 
