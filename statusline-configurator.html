@@ -5,6 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Claude Code Statusline Configurator</title>
   <style>
+    @font-face {
+      font-family: 'MesloLGS NF';
+      src: url('assets/fonts/MesloLGS-NF-Regular.ttf') format('truetype');
+      font-weight: normal;
+      font-style: normal;
+      font-display: swap;
+    }
+
     :root {
       --color-bg: #161616;
       --color-surface: #1f1f1f;
@@ -18,7 +26,7 @@
       --color-success: #4ade80;
       --color-warning: #facc15;
       --font: 'Segoe UI', system-ui, sans-serif;
-      --font-mono: 'Cascadia Code', 'Consolas', monospace;
+      --font-mono: 'MesloLGS NF', 'Cascadia Code', 'Consolas', monospace;
       --radius: 6px;
     }
 
@@ -139,6 +147,8 @@
       border-radius: var(--radius);
       padding: 10px 16px;
       min-height: 36px;
+      letter-spacing: 0;
+      line-height: 1.25;
     }
 
     /* ---------- Export ---------- */
@@ -199,6 +209,15 @@
       border-radius: 3px;
     }
     .btn-icon:hover { color: var(--color-text); background: var(--color-surface-2); }
+    .chip-connector {
+      display: inline-block;
+      width: 4px;
+      height: 22px;
+      background: var(--color-surface-2);
+      border-top: 1px solid var(--color-border);
+      border-bottom: 1px solid var(--color-border);
+      vertical-align: middle;
+    }
     .line-drag-handle {
       cursor: grab;
       color: var(--color-text-muted);
@@ -1229,14 +1248,20 @@ function renderLines() {
             ${line.mergeWithNext ? '→' : '↝'}
           </button>
         ` : ''}
-        <button class="btn btn-danger" style="padding:2px 8px;font-size:11px;" onclick="removeLine('${line.id}')">✕ Entfernen</button>
+        <button class="btn btn-danger" title="Zeile entfernen" style="padding:2px 8px;font-size:11px;" onclick="removeLine('${line.id}')">✕ Entfernen</button>
       </div>
       <div class="line-drop-zone" data-line-id="${line.id}"
            style="min-height:44px;background:var(--color-surface);border:1.5px dashed var(--color-border);
                   border-radius:var(--radius);padding:6px 8px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
         ${line.fields.length === 0
           ? '<span style="color:var(--color-text-muted);font-size:12px;pointer-events:none;">Felder hier hineinziehen…</span>'
-          : line.fields.map(f => renderFieldChip(f, line.id)).join('')
+          : line.fields.reduce((html, f, idx) => {
+              const prevField  = line.fields[idx - 1];
+              const mergedLeft  = !!(prevField?.mergeWithNext);
+              const mergedRight = !!f.mergeWithNext;
+              if (mergedLeft) html += '<span class="chip-connector"></span>';
+              return html + renderFieldChip(f, line.id, mergedLeft, mergedRight);
+            }, '')
         }
       </div>
     `;
@@ -1248,7 +1273,7 @@ function renderLines() {
   if (alignEl) alignEl.checked = state.columnAlignmentEnabled;
 }
 
-function renderFieldChip(field, lineId) {
+function renderFieldChip(field, lineId, mergedLeft = false, mergedRight = false) {
   // Apply the same priority chain as renderFieldHtml so the chip reflects
   // the effective color (Override > Field-Theme > Global Theme > Standard).
   const fieldThemeId = field.themeId ?? state.activeTheme;
@@ -1263,11 +1288,19 @@ function renderFieldChip(field, lineId) {
   const mergeActive = !!field.mergeWithNext;
   const mergeColor  = mergeActive ? 'var(--color-accent)' : 'var(--color-text-muted)';
   const mergeIcon   = mergeActive ? '→' : '↝';
+  // Border-radius and border adapt to merge context so connected chips appear joined.
+  const borderRadius = (mergedLeft && mergedRight) ? '0'
+                     : mergedLeft                  ? '0 4px 4px 0'
+                     : mergedRight                 ? '4px 0 0 4px'
+                     :                              '4px';
+  const borderLeft   = mergedLeft  ? 'none' : '1px solid var(--color-border)';
+  const borderRight  = mergedRight ? 'none' : '1px solid var(--color-border)';
   return `
     <span class="field-chip" data-field-id="${field.id}" data-line-id="${lineId}"
           style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;
-                 border-radius:4px;font-size:12px;background:var(--color-surface-2);
-                 border:1px solid var(--color-border);${bg}${fg}cursor:default;">
+                 border-radius:${borderRadius};font-size:12px;background:var(--color-surface-2);
+                 border-top:1px solid var(--color-border);border-bottom:1px solid var(--color-border);
+                 border-left:${borderLeft};border-right:${borderRight};${bg}${fg}cursor:default;">
       <span>${label}</span>
       <button class="btn-icon" title="Mit nächstem Feld gruppieren (Tab-Ausrichtung)"
               onclick="toggleMergeNext('${lineId}','${field.id}')"
@@ -2078,7 +2111,7 @@ const DATATYPE_FORMATS = {
   currency:       [],
   bool:           [['true_false','true / false'],['yes_no','yes / no'],['checkmark','✓ / ✗'],['custom','Benutzerdefiniert']],
   number:         [['raw','Rohwert (12345678)'],['auto','Auto (456 / 33k / 939m / 12b)']],
-  unix_timestamp: [['hours','Stunden (75h 32m)'],['short','Kurz (1d 4h 32m)'],['long','Lang (1d 4hr 32min)'],['raw','Rohwert']],
+  unix_timestamp: [['hours','Stunden (75h 32m)'],['short','Kurz (1d 4h 32m)'],['long','Lang (1d 4hr 32min)'],['days_hours','Tage + Stunden (1d 23h)'],['days_hours_pad','Tage + Stunden mit 0d (0d 23h)'],['raw','Rohwert']],
   duration_ms:    [['hours','Stunden (75h 32m)'],['short','Kurz (1d 4h 32m)'],['long','Lang (1d 4hr 32min)']],
 };
 
@@ -2703,11 +2736,26 @@ function formatFieldValue(value, dataType, format, formatOptions) {
       }
     }
     case 'unix_timestamp': {
-      const now  = Math.floor(Date.now() / 1000);
-      const diff = Math.max(0, Number(value) - now);
-      const h = Math.floor(diff / 3600);
-      const m = Math.floor((diff % 3600) / 60);
-      return `${h}h ${m}m`;
+      const now        = Math.floor(Date.now() / 1000);
+      const diff       = Math.max(0, Number(value) - now);
+      const totalHours = Math.floor(diff / 3600);
+      const days       = Math.floor(diff / 86400);
+      const remHours   = Math.floor((diff % 86400) / 3600);
+      const minutes    = Math.floor((diff % 3600) / 60);
+      switch (format) {
+        case 'raw':            return String(value);
+        case 'hours':          return `${totalHours}h ${minutes}m`;
+        case 'long':           return days > 0
+          ? `${days}d ${remHours}hr ${minutes}min`
+          : `${totalHours}hr ${minutes}min`;
+        case 'days_hours':     return days > 0
+          ? `${days}d ${remHours}h`
+          : `${totalHours}h`;
+        case 'days_hours_pad': return `${days}d ${remHours}h`;
+        default: /* 'short' */ return days > 0
+          ? `${days}d ${remHours}h ${minutes}m`
+          : `${totalHours}h ${minutes}m`;
+      }
     }
     case 'duration_ms': {
       // Value is in milliseconds (e.g. cost.total_duration_ms) — convert to seconds first
@@ -2741,7 +2789,7 @@ function renderFieldHtml(field, data, previewTheme = null, previewOverride = nul
   const bgIsOverride = field.bgOverride ?? (field.bg !== null && field.bg !== undefined);
   const fg = fgIsOverride ? field.fg : (previewTheme?.fieldFg ?? null);
   const bg = bgIsOverride ? field.bg : (previewTheme?.fieldBg ?? null);
-  const style = [fg ? `color:${fg};` : '', bg ? `background:${bg};padding:1px 3px;` : ''].join('');
+  const style = [fg ? `color:${fg};` : '', bg ? `background:${bg};` : ''].join('');
 
   if (field.type === 'static') {
     return `<span style="${style}">${escapeHtml(field.text || '')}</span>`;
@@ -2779,7 +2827,7 @@ function renderFieldHtml(field, data, previewTheme = null, previewOverride = nul
     const barFgOverride = fgIsOverride ? (field.fg ?? null) : null;
     const { bar, color } = makeProgressBar(raw, field.progressStyle || 'color-coded', barFgOverride, brackets, charset, previewTheme?.progressThresholds || null);
     const colorStyle = color ? `color:${color};` : '';
-    const finalStyle = [colorStyle, bg ? `background:${bg};padding:1px 3px;` : ''].join('');
+    const finalStyle = [colorStyle, bg ? `background:${bg};` : ''].join('');
     return `<span style="${finalStyle}">${bar}</span>`;
   }
 
