@@ -1438,6 +1438,245 @@ Describe 'Format-Line-Group single line' {
     }
 }
 
+Describe 'Get-EffortLevel' {
+    It 'returns effortLevel from user settings when project settings are absent' {
+        # Arrange: write a user settings file with effortLevel
+        $userDir = Join-Path $TestDrive 'user-effort'
+        New-Item -ItemType Directory -Path (Join-Path $userDir '.claude') -Force | Out-Null
+        $userSettings = Join-Path $userDir '.claude\settings.json'
+        @{ effortLevel = 'high' } | ConvertTo-Json | Set-Content -Path $userSettings -Encoding UTF8
+
+        # Act: override USERPROFILE env var so Get-EffortLevel reads from our temp dir.
+        # Push-Location to a clean dir so no project .claude/settings.json is found.
+        $emptyProject = Join-Path $TestDrive 'empty-project'
+        New-Item -ItemType Directory -Path $emptyProject -Force | Out-Null
+        $result = Push-Location $emptyProject
+        try {
+            $env:USERPROFILE_BACKUP = $env:USERPROFILE
+            $env:USERPROFILE = $userDir
+            $result = Get-EffortLevel
+        } finally {
+            $env:USERPROFILE = $env:USERPROFILE_BACKUP
+            Remove-Item Env:USERPROFILE_BACKUP -ErrorAction SilentlyContinue
+            Pop-Location
+        }
+
+        # Assert
+        $result | Should -Be 'high'
+    }
+
+    It 'project .claude/settings.json overrides user settings' {
+        # Arrange: user settings say "medium", project says "max"
+        $userDir = Join-Path $TestDrive 'user-effort-override'
+        New-Item -ItemType Directory -Path (Join-Path $userDir '.claude') -Force | Out-Null
+        $userSettings = Join-Path $userDir '.claude\settings.json'
+        @{ effortLevel = 'medium' } | ConvertTo-Json | Set-Content -Path $userSettings -Encoding UTF8
+
+        $projectDir = Join-Path $TestDrive 'project-effort-override'
+        New-Item -ItemType Directory -Path (Join-Path $projectDir '.claude') -Force | Out-Null
+        $projectSettings = Join-Path $projectDir '.claude\settings.json'
+        @{ effortLevel = 'max' } | ConvertTo-Json | Set-Content -Path $projectSettings -Encoding UTF8
+
+        $result = Push-Location $projectDir
+        try {
+            $env:USERPROFILE_BACKUP = $env:USERPROFILE
+            $env:USERPROFILE = $userDir
+            $result = Get-EffortLevel
+        } finally {
+            $env:USERPROFILE = $env:USERPROFILE_BACKUP
+            Remove-Item Env:USERPROFILE_BACKUP -ErrorAction SilentlyContinue
+            Pop-Location
+        }
+
+        $result | Should -Be 'max'
+    }
+
+    It 'returns null when neither file has effortLevel' {
+        $userDir = Join-Path $TestDrive 'user-no-effort'
+        New-Item -ItemType Directory -Path (Join-Path $userDir '.claude') -Force | Out-Null
+        @{ model = 'opus' } | ConvertTo-Json | Set-Content -Path (Join-Path $userDir '.claude\settings.json') -Encoding UTF8
+
+        $emptyProject = Join-Path $TestDrive 'project-no-effort'
+        New-Item -ItemType Directory -Path $emptyProject -Force | Out-Null
+        $result = Push-Location $emptyProject
+        try {
+            $env:USERPROFILE_BACKUP = $env:USERPROFILE
+            $env:USERPROFILE = $userDir
+            $result = Get-EffortLevel
+        } finally {
+            $env:USERPROFILE = $env:USERPROFILE_BACKUP
+            Remove-Item Env:USERPROFILE_BACKUP -ErrorAction SilentlyContinue
+            Pop-Location
+        }
+
+        $result | Should -BeNullOrEmpty
+    }
+
+    It 'silently ignores corrupted settings file and falls through' {
+        $userDir = Join-Path $TestDrive 'user-corrupt-effort'
+        New-Item -ItemType Directory -Path (Join-Path $userDir '.claude') -Force | Out-Null
+        Set-Content -Path (Join-Path $userDir '.claude\settings.json') -Value 'not valid json {{{' -Encoding UTF8
+
+        $emptyProject = Join-Path $TestDrive 'project-corrupt-effort'
+        New-Item -ItemType Directory -Path $emptyProject -Force | Out-Null
+        $result = Push-Location $emptyProject
+        try {
+            $env:USERPROFILE_BACKUP = $env:USERPROFILE
+            $env:USERPROFILE = $userDir
+            { Get-EffortLevel } | Should -Not -Throw
+            $result = Get-EffortLevel
+        } finally {
+            $env:USERPROFILE = $env:USERPROFILE_BACKUP
+            Remove-Item Env:USERPROFILE_BACKUP -ErrorAction SilentlyContinue
+            Pop-Location
+        }
+
+        $result | Should -BeNullOrEmpty
+    }
+}
+
+Describe 'Invoke-Main effort_level enrichment' {
+    BeforeAll {
+        $effortDir = Join-Path $TestDrive 'effort-enrich'
+        New-Item -ItemType Directory -Path $effortDir -Force | Out-Null
+        $effortConfig = Join-Path $effortDir 'statusline-config.json'
+        @{
+            lines = @(@{
+                fields = @(@{
+                    type   = 'effort_level'
+                    format = 'raw'
+                    fg     = $null
+                    bg     = $null
+                })
+            })
+            knownKeys = @('effort_level')
+        } | ConvertTo-Json -Depth 10 | Set-Content -Path $effortConfig -Encoding UTF8
+    }
+
+    It 'enriches effort_level from user settings.json when stdin lacks it' {
+        $userDir = Join-Path $TestDrive 'effort-enrich-user'
+        New-Item -ItemType Directory -Path (Join-Path $userDir '.claude') -Force | Out-Null
+        @{ effortLevel = 'high' } | ConvertTo-Json | Set-Content -Path (Join-Path $userDir '.claude\settings.json') -Encoding UTF8
+
+        $emptyProject = Join-Path $TestDrive 'effort-enrich-project'
+        New-Item -ItemType Directory -Path $emptyProject -Force | Out-Null
+        $result = Push-Location $emptyProject
+        try {
+            $env:USERPROFILE_BACKUP = $env:USERPROFILE
+            $env:USERPROFILE = $userDir
+            $result = Invoke-Main -ConfigPath $effortConfig -InputJson '{}'
+        } finally {
+            $env:USERPROFILE = $env:USERPROFILE_BACKUP
+            Remove-Item Env:USERPROFILE_BACKUP -ErrorAction SilentlyContinue
+            Pop-Location
+        }
+
+        $result | Should -Be 'high'
+    }
+}
+
+Describe 'Format-Field effort_level rendering' {
+    BeforeAll {
+        $script:ThemeFg   = $null
+        $script:ThemeBg   = $null
+        $script:ThemesMap = @{}
+        $script:PathKeys  = @()
+
+        function script:Make-EffortField($fmt) {
+            [PSCustomObject]@{
+                type        = 'effort_level'
+                format      = $fmt
+                fg          = $null
+                bg          = $null
+                fgOverride  = $false
+                bgOverride  = $false
+            }
+        }
+
+        function script:Make-EffortData($level) {
+            [PSCustomObject]@{ effort_level = $level }
+        }
+    }
+
+    It "format=raw returns raw value 'medium'" {
+        Format-Field (Make-EffortField 'raw') (Make-EffortData 'medium') | Should -Be 'medium'
+    }
+
+    It "format=raw returns raw value 'low'" {
+        Format-Field (Make-EffortField 'raw') (Make-EffortData 'low') | Should -Be 'low'
+    }
+
+    It "format=short returns 'M' for medium" {
+        Format-Field (Make-EffortField 'short') (Make-EffortData 'medium') | Should -Be 'M'
+    }
+
+    It "format=short returns 'L' for low" {
+        Format-Field (Make-EffortField 'short') (Make-EffortData 'low') | Should -Be 'L'
+    }
+
+    It "format=short returns 'H' for high" {
+        Format-Field (Make-EffortField 'short') (Make-EffortData 'high') | Should -Be 'H'
+    }
+
+    It "format=short returns 'X' for max" {
+        Format-Field (Make-EffortField 'short') (Make-EffortData 'max') | Should -Be 'X'
+    }
+
+    It 'format=symbol emits correct UTF-8 bytes for medium (U+25D0 ◐)' {
+        $output = Format-Field (Make-EffortField 'symbol') (Make-EffortData 'medium')
+        $bytes  = [System.Text.Encoding]::UTF8.GetBytes($output)
+        $hex    = ($bytes | ForEach-Object { '{0:X2}' -f $_ }) -join ''
+        # U+25D0 ◐ → UTF-8: E2 97 90
+        $hex | Should -Match 'E29790'
+    }
+
+    It 'format=symbol emits correct UTF-8 bytes for low (U+25CB ○)' {
+        $output = Format-Field (Make-EffortField 'symbol') (Make-EffortData 'low')
+        $bytes  = [System.Text.Encoding]::UTF8.GetBytes($output)
+        $hex    = ($bytes | ForEach-Object { '{0:X2}' -f $_ }) -join ''
+        # U+25CB ○ → UTF-8: E2 97 8B
+        $hex | Should -Match 'E2978B'
+    }
+
+    It 'format=symbol emits correct UTF-8 bytes for high (U+25CF ●)' {
+        $output = Format-Field (Make-EffortField 'symbol') (Make-EffortData 'high')
+        $bytes  = [System.Text.Encoding]::UTF8.GetBytes($output)
+        $hex    = ($bytes | ForEach-Object { '{0:X2}' -f $_ }) -join ''
+        # U+25CF ● → UTF-8: E2 97 8F
+        $hex | Should -Match 'E2978F'
+    }
+
+    It 'format=symbol emits correct UTF-8 bytes for max (U+25C9 ◉)' {
+        $output = Format-Field (Make-EffortField 'symbol') (Make-EffortData 'max')
+        $bytes  = [System.Text.Encoding]::UTF8.GetBytes($output)
+        $hex    = ($bytes | ForEach-Object { '{0:X2}' -f $_ }) -join ''
+        # U+25C9 ◉ → UTF-8: E2 97 89
+        $hex | Should -Match 'E29789'
+    }
+
+    It "format=icon+raw returns symbol and raw value for medium" {
+        $output = Format-Field (Make-EffortField 'icon+raw') (Make-EffortData 'medium')
+        $output | Should -Match 'medium'
+        # Symbol ◐ must be present (UTF-8 E2 97 90)
+        $bytes = [System.Text.Encoding]::UTF8.GetBytes($output)
+        $hex   = ($bytes | ForEach-Object { '{0:X2}' -f $_ }) -join ''
+        $hex | Should -Match 'E29790'
+    }
+
+    It "format=icon+short returns symbol and short char for high" {
+        $output = Format-Field (Make-EffortField 'icon+short') (Make-EffortData 'high')
+        $output | Should -Match 'H'
+        # Symbol ● must be present (UTF-8 E2 97 8F)
+        $bytes = [System.Text.Encoding]::UTF8.GetBytes($output)
+        $hex   = ($bytes | ForEach-Object { '{0:X2}' -f $_ }) -join ''
+        $hex | Should -Match 'E2978F'
+    }
+
+    It 'returns empty string when effort_level is null' {
+        Format-Field (Make-EffortField 'raw') ([PSCustomObject]@{}) | Should -Be ''
+    }
+}
+
 Describe 'Encoding — new_fields_indicator emits UTF-8 bullet' {
     # End-to-end byte-level assertion: spawn the script as a fresh pwsh subprocess,
     # pipe stdin, capture raw stdout bytes, and verify the bullet character is

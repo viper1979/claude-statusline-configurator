@@ -390,6 +390,9 @@ const AVAILABLE_FIELDS = [
     { key: 'worktree.original_cwd',    label: 'Original CWD' },
     { key: 'worktree.original_branch', label: 'Original Branch' },
   ]},
+  { group: 'Claude Settings', items: [
+    { key: 'effort_level', label: 'Effort Level', specialType: 'effort_level' },
+  ]},
 ];
 
 // Fields that are percentages (offer progress bar in popup)
@@ -479,6 +482,7 @@ const SAMPLE_DATA = {
   vim: { mode: 'NORMAL' },
   agent: { name: '' },
   worktree: { name: 'my-feature', path: '/home/user/.claude/worktrees/my-feature', branch: 'worktree-my-feature', original_cwd: '/home/user/myproject', original_branch: 'main' },
+  effort_level: 'medium',
 };
 
 // ─── Emoji list for the emoji picker (~250 emojis, curated for Windows Terminal compatibility) ────
@@ -773,7 +777,13 @@ function renderFieldsPanel() {
     for (const field of group.items) {
       const item = document.createElement('div');
       item.className = 'field-source';
-      item.dataset.fieldKey = field.key;
+      // Items with specialType are handled as virtual/synthetic fields (like new_fields_indicator).
+      // They use data-field-type so onAdd creates the right field object directly.
+      if (field.specialType) {
+        item.dataset.fieldType = field.specialType;
+      } else {
+        item.dataset.fieldKey = field.key;
+      }
       item.dataset.fieldLabel = field.label;
       item.dataset.fieldGroup = group.group;
       item.style.cssText = 'padding:5px 8px;border-radius:4px;font-size:12px;cursor:grab;display:flex;align-items:center;gap:6px;transition:background 0.1s;';
@@ -1271,6 +1281,7 @@ function renderFieldChip(field, lineId) {
 function fieldLabel(field) {
   if (field.type === 'static')              return `"${escapeHtml(field.text)}"`;
   if (field.type === 'new_fields_indicator') return '● Neue Felder';
+  if (field.type === 'effort_level')         return '◐ Effort Level';
   if (field.type === 'field' || field.type === 'progressbar') {
     // Find label in AVAILABLE_FIELDS
     for (const g of AVAILABLE_FIELDS) {
@@ -1388,6 +1399,10 @@ function initSortable() {
         if (panelFieldType === 'new_fields_indicator') {
           // Diagnose palette item
           newField = { id: generateId(), type: 'new_fields_indicator', fg: null, bg: null };
+          _draggedField = null;
+        } else if (panelFieldType === 'effort_level') {
+          // Claude Settings — synthetic field read from settings.json at runtime
+          newField = { id: generateId(), type: 'effort_level', format: 'raw', fg: null, bg: null };
           _draggedField = null;
         } else if (panelCustomFieldId) {
           // Custom-field clone from "Eigene Felder" palette → independent static copy
@@ -1972,6 +1987,35 @@ function renderEditTabGeneral() {
         Pfad: &lt;scriptdir&gt;/statusline-new-fields.log
       </p>
     `;
+  } else if (f.type === 'effort_level') {
+    const curFmt = f.format || 'raw';
+    const formats = [
+      ['raw',       'medium',   'Rohwert (medium/high/…)'],
+      ['short',     'M',        'Kurzbuchstabe (L/M/H/X)'],
+      ['symbol',    '◐',        'Symbol (○/◐/●/◉)'],
+      ['icon+raw',  '◐ medium', 'Symbol + Rohwert'],
+      ['icon+short','◐ M',      'Symbol + Kurzbuchstabe'],
+    ];
+    el.innerHTML = `
+      <p style="font-size:12px;color:var(--color-text-muted);line-height:1.5;margin-bottom:12px;">
+        Zeigt das konfigurierte Effort Level an, gelesen aus <code>~/.claude/settings.json</code>.<br>
+        Projekt-spezifische <code>.claude/settings.json</code> überschreibt die User-Einstellung.
+      </p>
+      <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:6px;">Darstellung</div>
+      ${formats.map(([val, ex, lbl]) => `
+        <label style="display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:4px;cursor:pointer;">
+          <input type="radio" name="edit-effort-format" value="${val}" ${curFmt === val ? 'checked' : ''}>
+          <code style="font-size:11px;color:var(--color-accent);min-width:60px;">${ex}</code>
+          <span>${lbl}</span>
+        </label>
+      `).join('')}
+    `;
+    el.querySelectorAll('input[name="edit-effort-format"]').forEach(radio => {
+      radio.addEventListener('change', () => {
+        _editDraft.format = radio.value;
+        renderPreview();
+      });
+    });
   } else {
     // type === 'field' — key is read-only; path fields also show pathDepth option
     const isPathField   = PATH_KEYS.has(f.key);
@@ -2705,6 +2749,16 @@ function renderFieldHtml(field, data, previewTheme = null, previewOverride = nul
 
   if (field.type === 'new_fields_indicator') {
     return `<span style="${style}">● Neue Felder (Indikator)</span>`;
+  }
+
+  if (field.type === 'effort_level') {
+    const symbolMap = { low: '○', medium: '◐', high: '●', max: '◉' };
+    const shortMap  = { low: 'L', medium: 'M', high: 'H', max: 'X' };
+    const rawVal    = getNestedValue(data, 'effort_level') || 'medium';
+    const sym       = symbolMap[rawVal] ?? rawVal[0];
+    const sh        = shortMap[rawVal]  ?? rawVal[0].toUpperCase();
+    const rendered  = { raw: rawVal, short: sh, symbol: sym, 'icon+raw': `${sym} ${rawVal}`, 'icon+short': `${sym} ${sh}` }[field.format] ?? rawVal;
+    return `<span style="${style}">${escapeHtml(rendered)}</span>`;
   }
 
   // Use previewOverride as raw value for progressbar when set (e.g. from edit dialog preview)
