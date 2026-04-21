@@ -48,8 +48,11 @@ function Get-AllKeys {
     $result = @()
     $Obj.PSObject.Properties | ForEach-Object {
         $key = if ($Prefix) { "$Prefix.$($_.Name)" } else { $_.Name }
-        if ($_.Value -is [PSCustomObject]) {
-            # Container object — recurse into children, do not add the parent key itself
+        if ($null -ne $_.Value -and $_.Value.GetType().Name -eq 'PSCustomObject') {
+            # Container object — recurse into children, do not add the parent key itself.
+            # GetType().Name is used instead of -is [PSCustomObject] because Add-Member -Force
+            # on native command output (e.g. git) wraps the value in a PSObject adapter that
+            # falsely returns True for -is [PSCustomObject] even when the value is a String.
             $result += Get-AllKeys $_.Value $key
         } elseif ($null -ne $_.Value) {
             # Leaf value (string, number, bool, array) — add directly; skip null (container was absent)

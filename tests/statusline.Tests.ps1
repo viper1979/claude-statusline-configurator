@@ -612,6 +612,20 @@ Describe 'Get-AllKeys' {
         $keys = Get-AllKeys $null ''
         $keys | Should -BeNullOrEmpty
     }
+
+    It 'does not recurse into string added via Add-Member -Force (PSObject wrapper quirk)' {
+        # Regression: Add-Member -Force on native-command output (e.g. git) wraps the string in
+        # a PSObject that falsely claims -is [PSCustomObject] = True. Get-AllKeys must not recurse
+        # into the string; it must yield "worktree.branch", NOT "worktree.branch.Length".
+        $data = [PSCustomObject]@{}
+        $data | Add-Member -NotePropertyName 'worktree' -NotePropertyValue ([PSCustomObject]@{}) -Force
+        # Simulate the exact enrichment: Add-Member -Force on a string (as Invoke-Main does after git rev-parse)
+        $data.worktree | Add-Member -NotePropertyName 'branch' -NotePropertyValue 'master' -Force
+
+        $keys = Get-AllKeys $data ''
+        $keys | Should -Contain 'worktree.branch'
+        $keys | Should -Not -Contain 'worktree.branch.Length'
+    }
 }
 
 Describe 'Format-Field with dataType' {
@@ -772,6 +786,27 @@ Describe 'new_fields_indicator in Format-Field' {
         It 'returns empty string' {
             $field = [PSCustomObject]@{ type='new_fields_indicator'; fg=$null; bg=$null }
             Format-Field $field $data | Should -BeNullOrEmpty
+        }
+    }
+
+    Context 'regression: branch string via Add-Member -Force does not trigger indicator' {
+        BeforeAll {
+            # Simulate data after git-enrichment: worktree.branch set with Add-Member -Force.
+            # The PSObject wrapper quirk formerly made -is [PSCustomObject] return True for
+            # this string, causing Get-AllKeys to emit "worktree.branch.Length" and the
+            # indicator to fire even though no genuine new key was present.
+            $script:KnownKeys = @('worktree.branch')
+            $script:enrichedData = [PSCustomObject]@{}
+            $script:enrichedData | Add-Member -NotePropertyName 'worktree' -NotePropertyValue ([PSCustomObject]@{}) -Force
+            $script:enrichedData.worktree | Add-Member -NotePropertyName 'branch' -NotePropertyValue 'master' -Force
+            $script:ThemeFg   = $null
+            $script:ThemeBg   = $null
+            $script:ThemesMap = @{}
+        }
+
+        It 'returns empty string when branch is the only key and is known' {
+            $field = [PSCustomObject]@{ type='new_fields_indicator'; fg=$null; bg=$null }
+            Format-Field $field $script:enrichedData | Should -BeNullOrEmpty
         }
     }
 }
