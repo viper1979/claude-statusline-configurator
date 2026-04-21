@@ -1712,6 +1712,91 @@ Describe 'Format-Field effort_level rendering' {
     }
 }
 
+Describe 'Encoding — barCharset emits stable UTF-8 codepoints' {
+    # Byte-level assertions for every barCharset supported by Format-ProgressBar.
+    # Ensures that the Unicode codepoints emitted are deterministic and do not
+    # silently change (e.g. when the script is parsed under a non-UTF-8 codepage),
+    # so that any terminal font — including Nerd Fonts — always receives the same
+    # codepoints to render.
+
+    BeforeAll {
+        # Expected UTF-8 byte sequences (hex, no spaces) for filled and empty
+        # glyph of each charset.  Derived from the charMap in statusline.ps1:177-184.
+        $script:expectedGlyphs = @{
+            block  = @{ filled = 'E29693'; empty = 'E29691' }  # U+2593 ▓ / U+2591 ░
+            solid  = @{ filled = 'E29688'; empty = 'E29691' }  # U+2588 █ / U+2591 ░
+            circle = @{ filled = 'E2978F'; empty = 'E2978B' }  # U+25CF ● / U+25CB ○
+            square = @{ filled = 'E296A0'; empty = 'E296A1' }  # U+25A0 ■ / U+25A1 □
+            ascii  = @{ filled = '23';     empty = '2D' }       # '#' / '-'
+            pipe   = @{ filled = 'E296AE'; empty = 'E296AF' }  # U+25AE ▮ / U+25AF ▯
+        }
+    }
+
+    It 'charset <charset> emits expected filled+empty UTF-8 bytes at 50%' -ForEach @(
+        @{ charset = 'block'  }
+        @{ charset = 'solid'  }
+        @{ charset = 'circle' }
+        @{ charset = 'square' }
+        @{ charset = 'ascii'  }
+        @{ charset = 'pipe'   }
+    ) {
+        # Arrange
+        $expected = $script:expectedGlyphs[$charset]
+
+        # Act: -Fg $null + -Style 'block' = no ANSI colour codes, pure glyph output
+        $output  = Format-ProgressBar -Value 50 -Style 'block' -Fg $null `
+                                      -Brackets $false -Charset $charset
+        # Strip the trailing percentage label, keep only the bar glyphs
+        $barOnly = ($output -replace '\s*\d+%$', '').Trim()
+        $bytes   = [System.Text.Encoding]::UTF8.GetBytes($barOnly)
+        $hex     = ($bytes | ForEach-Object { '{0:X2}' -f $_ }) -join ''
+
+        # Assert
+        $hex | Should -Match $expected.filled
+        $hex | Should -Match $expected.empty
+    }
+
+    It 'charset braille emits expected fill, right-edge and empty UTF-8 bytes at 50%' {
+        # Arrange: at value 50 the bar has 5 filled (U+28FF ⣿), 4 empty (U+28C9 ⣉),
+        # and a right edge at position 9 (U+28F9 ⣹).  No left-edge at position 0
+        # because position 0 is filled when value >= 10%.
+
+        # Act
+        $output  = Format-ProgressBar -Value 50 -Style 'block' -Fg $null -Charset 'braille'
+        $barOnly = ($output -replace '\s*\d+%$', '').Trim()
+        $bytes   = [System.Text.Encoding]::UTF8.GetBytes($barOnly)
+        $hex     = ($bytes | ForEach-Object { '{0:X2}' -f $_ }) -join ''
+
+        # Assert
+        $hex | Should -Match 'E2A3BF'   # U+28FF ⣿ filled segment
+        $hex | Should -Match 'E2A3B9'   # U+28F9 ⣹ right edge
+        $hex | Should -Match 'E2A389'   # U+28C9 ⣉ empty segment
+    }
+
+    It 'charset braille emits left-edge byte E2A38F for U+28CF at 0%' {
+        # At 0% position 0 gets the left-edge glyph U+28CF ⣏ instead of a fill char.
+
+        # Act
+        $output  = Format-ProgressBar -Value 0 -Style 'block' -Fg $null -Charset 'braille'
+        $barOnly = ($output -replace '\s*\d+%$', '').Trim()
+        $bytes   = [System.Text.Encoding]::UTF8.GetBytes($barOnly)
+        $hex     = ($bytes | ForEach-Object { '{0:X2}' -f $_ }) -join ''
+
+        # Assert
+        $hex | Should -Match 'E2A38F'   # U+28CF ⣏ left edge
+    }
+
+    It 'no two non-ascii charsets share the same filled-glyph codepoint' {
+        # Guards against accidentally reusing a codepoint across charsets, which
+        # would make two visually identical bars indistinguishable in tests.
+        $filledHexValues = $script:expectedGlyphs.GetEnumerator() |
+            Where-Object { $_.Key -ne 'ascii' } |
+            ForEach-Object { $_.Value.filled }
+
+        ($filledHexValues | Sort-Object -Unique).Count | Should -Be $filledHexValues.Count
+    }
+}
+
 Describe 'Encoding — new_fields_indicator emits UTF-8 bullet' {
     # End-to-end byte-level assertion: spawn the script as a fresh pwsh subprocess,
     # pipe stdin, capture raw stdout bytes, and verify the bullet character is
