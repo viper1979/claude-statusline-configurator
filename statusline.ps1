@@ -1,10 +1,12 @@
-# statusline.ps1 — Claude Code custom status line
+﻿# statusline.ps1 — Claude Code custom status line
 # Claude Code pipes the session JSON to stdin.
 # Reads statusline-config.json from the same directory as this script.
 
 Set-StrictMode -Off
 
-# Ensure stdout is UTF-8 so non-ASCII characters (progressbar, etc.) survive the pipe to Claude Code
+# Ensure stdin/stdout are UTF-8 so non-ASCII characters (progressbar, etc.) survive the pipe to Claude Code
+# InputEncoding guards against corrupted stdin JSON when the host console runs on CP850/CP1252
+[Console]::InputEncoding  = [System.Text.Encoding]::UTF8
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding           = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'SilentlyContinue'
@@ -431,6 +433,35 @@ function Format-Field {
             if ($Field.bg) { return "${bgAnsi}${bar}${script:AnsiReset}" }
             return $bar
         }
+        'effort_level' {
+            # Mapping tables use Unicode code points to avoid encoding issues
+            # when the script is loaded without a UTF-8 BOM (Windows ANSI page).
+            $symbolMap = @{
+                low    = [char]0x25CB  # ○
+                medium = [char]0x25D0  # ◐
+                high   = [char]0x25CF  # ●
+                max    = [char]0x25C9  # ◉
+            }
+            $shortMap = @{
+                low    = 'L'
+                medium = 'M'
+                high   = 'H'
+                max    = 'X'
+            }
+            $raw = Get-NestedValue $Data 'effort_level'
+            if ($null -eq $raw -or "$raw" -eq '') { return '' }
+            $rawStr    = "$raw"
+            $symbol    = if ($symbolMap.ContainsKey($rawStr)) { $symbolMap[$rawStr] } else { $rawStr[0] }
+            $shortChar = if ($shortMap.ContainsKey($rawStr))  { $shortMap[$rawStr]  } else { $rawStr.ToUpper()[0] }
+            $rendered  = switch ($Field.format) {
+                'short'      { $shortChar }
+                'symbol'     { "$symbol" }
+                'icon+raw'   { "$symbol $rawStr" }
+                'icon+short' { "$symbol $shortChar" }
+                default      { $rawStr }  # 'raw' and unset both yield the plain string
+            }
+            return "${fgAnsi}${bgAnsi}${rendered}${resetAnsi}"
+        }
         'new_fields_indicator' {
             if (-not $script:KnownKeys) { return '' }
             $allKeys = Get-AllKeys $Data ''
@@ -449,7 +480,10 @@ function Format-Field {
                 }
             }
 
-            return "${fgAnsi}${bgAnsi}● ${count} neue Felder${resetAnsi}"
+            # Use Unicode code point instead of literal to avoid encoding issues when
+            # PowerShell reads the script without a UTF-8 BOM (Windows default ANSI page).
+            $bullet = [char]0x25CF
+            return "${fgAnsi}${bgAnsi}${bullet} ${count} neue Felder${resetAnsi}"
         }
         default {
             # type = 'field'
@@ -758,6 +792,37 @@ function Get-RateLimitsData {
 
 <#
 .SYNOPSIS
+    Resolves the configured effort level from settings.json files.
+.DESCRIPTION
+    Precedence (mirrors Claude Code's own lookup chain):
+      1. <project>/.claude/settings.json  (project-local override)
+      2. $env:USERPROFILE\.claude\settings.json  (user-global)
+    Returns the string value of effortLevel (e.g. "low", "medium", "high", "max"),
+    or $null when neither file contains the key or both files are absent/corrupt.
+.OUTPUTS
+    String or $null.
+#>
+function Get-EffortLevel {
+    $candidates = @(
+        (Join-Path $PWD '.claude\settings.json'),
+        (Join-Path $env:USERPROFILE '.claude\settings.json')
+    )
+    foreach ($path in $candidates) {
+        if (-not (Test-Path $path)) { continue }
+        try {
+            $settings = Get-Content -Path $path -Raw -Encoding UTF8 | ConvertFrom-Json
+            if ($settings.effortLevel) {
+                return $settings.effortLevel
+            }
+        } catch {
+            # Corrupted file — fall through to next source
+        }
+    }
+    return $null
+}
+
+<#
+.SYNOPSIS
     Computes derived fields and injects them into $Data via Add-Member.
 .DESCRIPTION
     General-purpose hook for all derived field computations. Computes:
@@ -877,6 +942,15 @@ function Invoke-Main {
         $rateLimits = Get-RateLimitsData -ScriptDir $scriptDir -LastPayloadPath $payloadPath
         if ($rateLimits) {
             $data | Add-Member -NotePropertyName 'rate_limits' -NotePropertyValue $rateLimits -Force
+        }
+    }
+
+    # Enrich effort_level from settings.json when not provided in stdin payload.
+    # Precedence: project .claude/settings.json → user ~/.claude/settings.json.
+    if (-not (Get-NestedValue $data 'effort_level')) {
+        $effortLevel = Get-EffortLevel
+        if ($effortLevel) {
+            $data | Add-Member -NotePropertyName 'effort_level' -NotePropertyValue $effortLevel -Force
         }
     }
 
