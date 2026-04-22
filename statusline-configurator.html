@@ -243,6 +243,10 @@
       opacity: 0.4;
       background: var(--color-accent) !important;
     }
+    .field-chip.selected {
+      outline: 2px solid var(--color-accent);
+      outline-offset: 1px;
+    }
   </style>
 </head>
 <body>
@@ -941,7 +945,7 @@ function deleteCustomField(cfId) {
 
 // ─── State ────────────────────────────────────────────────────────────────
 
-const state = { lines: [], customFields: [], themes: [], activeTheme: null, logNewFields: false, columnAlignmentEnabled: true };
+const state = { lines: [], customFields: [], themes: [], activeTheme: null, logNewFields: false, columnAlignmentEnabled: true, selection: { lineId: null, anchorId: null, fieldIds: [] } };
 
 // ─── Line management ──────────────────────────────────────────────────────
 
@@ -1296,7 +1300,7 @@ function renderFieldChip(field, lineId, mergedLeft = false, mergedRight = false)
   const borderLeft   = mergedLeft  ? 'none' : '1px solid var(--color-border)';
   const borderRight  = mergedRight ? 'none' : '1px solid var(--color-border)';
   return `
-    <span class="field-chip" data-field-id="${field.id}" data-line-id="${lineId}"
+    <span class="field-chip${state.selection.fieldIds.includes(field.id) ? ' selected' : ''}" data-field-id="${field.id}" data-line-id="${lineId}"
           style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;
                  border-radius:${borderRadius};font-size:12px;background:var(--color-surface-2);
                  border-top:1px solid var(--color-border);border-bottom:1px solid var(--color-border);
@@ -1416,12 +1420,35 @@ function initSortable() {
       ghostClass: 'sortable-ghost',
       draggable: '.field-chip',
       onStart(evt) {
-        // Store the dragged field at drag-start so onAdd can access it regardless of
-        // event order — SortableJS fires onAdd (target) before onRemove (source).
+        // Store dragged field(s) at drag-start so onAdd/onUpdate can access them
+        // regardless of event order — SortableJS fires onAdd (target) before onRemove (source).
         const fieldId = evt.item.dataset.fieldId;
         const srcLine = state.lines.find(l => l.id === lineId);
-        _draggedField        = srcLine?.fields.find(f => f.id === fieldId) ?? null;
         _draggedSourceLineId = lineId;
+
+        const isMulti = state.selection.lineId === lineId
+                     && state.selection.fieldIds.includes(fieldId)
+                     && state.selection.fieldIds.length > 1;
+
+        if (!isMulti) {
+          // Single-drag: clear any stale selection, set single-field buffer
+          clearSelection();
+          _draggedField  = srcLine?.fields.find(f => f.id === fieldId) ?? null;
+          _draggedFields = null;
+        } else {
+          // Multi-drag: build ordered array of selected fields
+          _draggedField  = null;
+          _draggedFields = state.selection.fieldIds
+            .map(id => srcLine?.fields.find(f => f.id === id))
+            .filter(Boolean);
+          // Visually dim the other selected chips while dragging (no re-render needed)
+          state.selection.fieldIds
+            .filter(id => id !== fieldId)
+            .forEach(id => {
+              const el = document.querySelector(`.field-chip[data-field-id="${id}"]`);
+              if (el) el.style.opacity = '0.3';
+            });
+        }
       },
       onAdd(evt) {
         const panelFieldType     = evt.item?.dataset?.fieldType;
@@ -1452,8 +1479,30 @@ function initSortable() {
             : { id: generateId(), type: 'field', key: panelFieldKey, ...defaults, fg: null, bg: null };
           _draggedField = null;
         } else {
-          // Zone-to-zone chip move: field was captured in onStart.
-          // Also remove from source line here — onAdd fires before onRemove in cross-list moves.
+          // Zone-to-zone chip move — single or multi, captured in onStart.
+          if (_draggedFields && _draggedFields.length > 1) {
+            // Multi-field cross-line move
+            evt.item.remove();
+            const selectedIds = new Set(_draggedFields.map(f => f.id));
+            if (_draggedSourceLineId && _draggedSourceLineId !== lineId) {
+              const srcLine = state.lines.find(l => l.id === _draggedSourceLineId);
+              if (srcLine) {
+                srcLine.fields = srcLine.fields.filter(f => !selectedIds.has(f.id));
+                applyMergeEdgeFix(srcLine.fields);
+              }
+            }
+            const targetLine = state.lines.find(l => l.id === lineId);
+            if (!targetLine) { clearSelection(); clearDragState(); return; }
+            const safeIndex = Math.min(evt.newIndex, targetLine.fields.length);
+            targetLine.fields.splice(safeIndex, 0, ..._draggedFields);
+            // Last chip in moved block should not carry a dangling merge flag
+            applyMergeEdgeFix(_draggedFields);
+            clearSelection();
+            clearDragState();
+            render();
+            return;
+          }
+          // Single-field cross-line move
           newField = _draggedField;
           _draggedField = null;
           if (!newField) return;
@@ -1471,10 +1520,38 @@ function initSortable() {
       },
       onUpdate(evt) {
         const zone = evt.to;
-        const chips = [...zone.querySelectorAll('.field-chip')];
-        const newOrder = chips.map(c => c.dataset.fieldId);
         const line = state.lines.find(l => l.id === lineId);
         if (!line) return;
+
+        if (_draggedFields && _draggedFields.length > 1) {
+          // Multi-field same-line reorder:
+          // Sortable moved exactly one chip (the dragged one). The other selected chips
+          // remain at their old DOM positions. We compute the correct insert index by
+          // counting non-selected chips that appear before the moved chip in the post-move DOM.
+          const selectedIds = new Set(_draggedFields.map(f => f.id));
+          const movedId     = evt.item.dataset.fieldId;
+          const allChipIds  = [...zone.querySelectorAll('.field-chip')].map(c => c.dataset.fieldId);
+          const movedDomIdx = allChipIds.indexOf(movedId);
+
+          // Count non-selected chips before the moved chip's new DOM position
+          let insertIdx = 0;
+          for (let i = 0; i < movedDomIdx; i++) {
+            if (!selectedIds.has(allChipIds[i])) insertIdx++;
+          }
+
+          const remaining = line.fields.filter(f => !selectedIds.has(f.id));
+          remaining.splice(insertIdx, 0, ..._draggedFields);
+          line.fields = remaining;
+
+          clearSelection();
+          clearDragState();
+          render();
+          return;
+        }
+
+        // Single-field same-line reorder
+        const chips    = [...zone.querySelectorAll('.field-chip')];
+        const newOrder = chips.map(c => c.dataset.fieldId);
         line.fields = newOrder.map(id => line.fields.find(f => f.id === id)).filter(Boolean);
         updateExportTextarea();
         renderPreview();
@@ -1484,9 +1561,8 @@ function initSortable() {
         // onRemove is retained as a required Sortable handler but takes no action.
       },
       onEnd(_evt) {
-        // Clear drag globals on drag end (covers cancel/abort cases where onAdd never fires).
-        _draggedField        = null;
-        _draggedSourceLineId = null;
+        // Clear drag globals and reset opacity on cancel/abort (covers cases where onAdd/onUpdate never fires).
+        clearDragState();
       },
     });
   });
@@ -1808,10 +1884,100 @@ function loadConfig(json) {
 // Bootstrap: one empty line on load
 addLine();
 
+// ─── Multi-selection listeners ────────────────────────────────────────────
+
+document.addEventListener('click', (e) => {
+  const chip = e.target.closest('.field-chip');
+
+  if (!chip) {
+    // Click outside any chip — clear selection
+    if (state.selection.fieldIds.length > 0) {
+      clearSelection();
+      render();
+    }
+    return;
+  }
+
+  // Clicks on inline buttons (edit / remove / merge-toggle) keep their own handlers
+  if (e.target.closest('button')) return;
+
+  const fieldId = chip.dataset.fieldId;
+  const lineId  = chip.dataset.lineId;
+  const line    = state.lines.find(l => l.id === lineId);
+  if (!line) return;
+
+  if (!e.shiftKey) {
+    // Plain click sets a new single-chip anchor (so SHIFT+click can extend from it)
+    state.selection = { lineId, anchorId: fieldId, fieldIds: [fieldId] };
+    render();
+    return;
+  }
+
+  // SHIFT+click — prevent browser text-selection range
+  e.preventDefault();
+
+  // Toggle off: SHIFT+click on the sole selected chip deselects it
+  if (state.selection.fieldIds.length === 1 && state.selection.fieldIds[0] === fieldId) {
+    clearSelection();
+    render();
+    return;
+  }
+
+  if (!state.selection.anchorId || state.selection.lineId !== lineId) {
+    // New anchor in this line
+    state.selection = { lineId, anchorId: fieldId, fieldIds: [fieldId] };
+  } else {
+    // Extend range from existing anchor to clicked chip
+    const anchorIdx  = line.fields.findIndex(f => f.id === state.selection.anchorId);
+    const clickedIdx = line.fields.findIndex(f => f.id === fieldId);
+    const from = Math.min(anchorIdx, clickedIdx);
+    const to   = Math.max(anchorIdx, clickedIdx);
+    state.selection.fieldIds = line.fields.slice(from, to + 1).map(f => f.id);
+  }
+  render();
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && state.selection.fieldIds.length > 0) {
+    clearSelection();
+    render();
+  }
+});
+
 // ─── Edit Dialog ─────────────────────────────────────────────────────────
 
 let _draggedField        = null; // buffer for zone-to-zone chip drag (set in onStart)
 let _draggedSourceLineId = null; // source line id for zone-to-zone drag (set in onStart)
+let _draggedFields       = null; // array of field objects during multi-drag; null = single-drag
+
+/**
+ * Resets multi-field selection state. Does not re-render — caller is responsible.
+ */
+function clearSelection() {
+  state.selection = { lineId: null, anchorId: null, fieldIds: [] };
+}
+
+/**
+ * Resets drag-related globals after a drag ends or is aborted.
+ */
+function clearDragState() {
+  _draggedField        = null;
+  _draggedFields       = null;
+  _draggedSourceLineId = null;
+  document.querySelectorAll('.field-chip').forEach(c => { c.style.opacity = ''; });
+}
+
+/**
+ * Ensures the last field in a fields array does not have a dangling mergeWithNext flag.
+ * Called after removing a contiguous block from a line so the field before the gap
+ * does not keep pointing at a removed successor.
+ * @param {Array} fieldsArray - The remaining fields after removal.
+ */
+function applyMergeEdgeFix(fieldsArray) {
+  if (fieldsArray.length === 0) return;
+  const last = fieldsArray[fieldsArray.length - 1];
+  if (last?.mergeWithNext) last.mergeWithNext = false;
+}
 
 let _editCtx = null;   // { source: 'line'|'palette'|'palette-new', lineId, fieldId }
 let _editDraft = null; // deep copy of the field being edited
