@@ -413,8 +413,9 @@ const AVAILABLE_FIELDS = [
     { key: 'worktree.original_cwd',    label: 'Original CWD' },
     { key: 'worktree.original_branch', label: 'Original Branch' },
   ]},
-  { group: 'Claude Settings', items: [
-    { key: 'effort_level', label: 'Effort Level', specialType: 'effort_level' },
+  { group: 'Session State', items: [
+    { key: 'effort',           label: 'Effort Level',     specialType: 'effort' },
+    { key: 'thinking_enabled', label: 'Thinking Enabled', specialType: 'thinking_enabled' },
   ]},
 ];
 
@@ -505,7 +506,8 @@ const SAMPLE_DATA = {
   vim: { mode: 'NORMAL' },
   agent: { name: '' },
   worktree: { name: 'my-feature', path: '/home/user/.claude/worktrees/my-feature', branch: 'worktree-my-feature', original_cwd: '/home/user/myproject', original_branch: 'main' },
-  effort_level: 'medium',
+  effort:   { level: 'medium' },
+  thinking: { enabled: true },
 };
 
 // ─── Emoji list for the emoji picker (~250 emojis, curated for Windows Terminal compatibility) ────
@@ -1318,7 +1320,9 @@ function renderFieldChip(field, lineId, mergedLeft = false, mergedRight = false)
 function fieldLabel(field) {
   if (field.type === 'static')              return `"${escapeHtml(field.text)}"`;
   if (field.type === 'new_fields_indicator') return '● Neue Felder';
-  if (field.type === 'effort_level')         return '◐ Effort Level';
+  if (field.type === 'effort')               return '◐ Effort Level';
+  if (field.type === 'thinking_enabled')     return '💭 Thinking';
+  if (field.type === 'effort_level')         return '◐ Effort Level (deprecated)';
   if (field.type === 'field' || field.type === 'progressbar') {
     // Find label in AVAILABLE_FIELDS
     for (const g of AVAILABLE_FIELDS) {
@@ -1460,9 +1464,13 @@ function initSortable() {
           // Diagnose palette item
           newField = { id: generateId(), type: 'new_fields_indicator', fg: null, bg: null };
           _draggedField = null;
-        } else if (panelFieldType === 'effort_level') {
-          // Claude Settings — synthetic field read from settings.json at runtime
-          newField = { id: generateId(), type: 'effort_level', format: 'raw', fg: null, bg: null };
+        } else if (panelFieldType === 'effort') {
+          // Session State — native effort.level from payload
+          newField = { id: generateId(), type: 'effort', format: 'symbol', fg: null, bg: null };
+          _draggedField = null;
+        } else if (panelFieldType === 'thinking_enabled') {
+          // Session State — native thinking.enabled from payload
+          newField = { id: generateId(), type: 'thinking_enabled', format: 'symbol', fg: null, bg: null };
           _draggedField = null;
         } else if (panelCustomFieldId) {
           // Custom-field clone from "Eigene Felder" palette → independent static copy
@@ -1819,7 +1827,8 @@ function loadConfig(json) {
     mergeWithNext: line.mergeWithNext === true,
     fields: (line.fields || []).map(f => ({
       id:            generateId(),
-      type:          f.type          || 'field',
+      // Migrate deprecated effort_level type → effort
+      type:          f.type === 'effort_level' ? 'effort' : (f.type || 'field'),
       key:           f.key           || null,
       text:          f.text          || '',
       fg:            f.fg            || null,
@@ -2186,30 +2195,59 @@ function renderEditTabGeneral() {
         Pfad: &lt;scriptdir&gt;/statusline-new-fields.log
       </p>
     `;
-  } else if (f.type === 'effort_level') {
-    const curFmt = f.format || 'raw';
+  } else if (f.type === 'effort') {
+    const curFmt = f.format || 'symbol';
     const formats = [
-      ['raw',       'medium',   'Rohwert (medium/high/…)'],
-      ['short',     'M',        'Kurzbuchstabe (L/M/H/X)'],
-      ['symbol',    '◐',        'Symbol (○/◐/●/◉)'],
-      ['icon+raw',  '◐ medium', 'Symbol + Rohwert'],
-      ['icon+short','◐ M',      'Symbol + Kurzbuchstabe'],
+      ['raw',       'medium',    'Rohwert (low/medium/high/xhigh/max)'],
+      ['short',     'M',         'Kurzbuchstabe (L/M/H/XH/X)'],
+      ['symbol',    '◐',         'Symbol (○/◐/●/⬤/◉)'],
+      ['icon+raw',  '◐ medium',  'Symbol + Rohwert'],
+      ['icon+short','◐ M',       'Symbol + Kurzbuchstabe'],
     ];
     el.innerHTML = `
       <p style="font-size:12px;color:var(--color-text-muted);line-height:1.5;margin-bottom:12px;">
-        Zeigt das konfigurierte Effort Level an, gelesen aus <code>~/.claude/settings.json</code>.<br>
-        Projekt-spezifische <code>.claude/settings.json</code> überschreibt die User-Einstellung.
+        Zeigt das aktuelle Effort Level an — nativ aus dem Claude-Code-Payload (<code>effort.level</code>).<br>
+        Reflektiert mid-session <code>/effort</code>-Änderungen sofort.
       </p>
       <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:6px;">Darstellung</div>
       ${formats.map(([val, ex, lbl]) => `
         <label style="display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:4px;cursor:pointer;">
           <input type="radio" name="edit-effort-format" value="${val}" ${curFmt === val ? 'checked' : ''}>
-          <code style="font-size:11px;color:var(--color-accent);min-width:60px;">${ex}</code>
+          <code style="font-size:11px;color:var(--color-accent);min-width:70px;">${ex}</code>
           <span>${lbl}</span>
         </label>
       `).join('')}
     `;
     el.querySelectorAll('input[name="edit-effort-format"]').forEach(radio => {
+      radio.addEventListener('change', () => {
+        _editDraft.format = radio.value;
+        renderPreview();
+      });
+    });
+  } else if (f.type === 'thinking_enabled') {
+    const curFmt = f.format || 'symbol';
+    const formats = [
+      ['raw',       'true',    'Rohwert (true/false)'],
+      ['short',     'T',       'Kurzbuchstabe (T/-)'],
+      ['symbol',    '💭',      'Symbol (💭/○)'],
+      ['icon+raw',  '💭 true', 'Symbol + Rohwert'],
+      ['icon+short','💭 T',    'Symbol + Kurzbuchstabe'],
+    ];
+    el.innerHTML = `
+      <p style="font-size:12px;color:var(--color-text-muted);line-height:1.5;margin-bottom:12px;">
+        Zeigt an ob Extended Thinking aktiv ist — nativ aus dem Claude-Code-Payload (<code>thinking.enabled</code>).<br>
+        Fehlt das Feld (z.B. beim Standard-Modus), wird nichts angezeigt.
+      </p>
+      <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:6px;">Darstellung</div>
+      ${formats.map(([val, ex, lbl]) => `
+        <label style="display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:4px;cursor:pointer;">
+          <input type="radio" name="edit-thinking-format" value="${val}" ${curFmt === val ? 'checked' : ''}>
+          <code style="font-size:11px;color:var(--color-accent);min-width:70px;">${ex}</code>
+          <span>${lbl}</span>
+        </label>
+      `).join('')}
+    `;
+    el.querySelectorAll('input[name="edit-thinking-format"]').forEach(radio => {
       radio.addEventListener('change', () => {
         _editDraft.format = radio.value;
         renderPreview();
@@ -2965,13 +3003,28 @@ function renderFieldHtml(field, data, previewTheme = null, previewOverride = nul
     return `<span style="${style}">● Neue Felder (Indikator)</span>`;
   }
 
-  if (field.type === 'effort_level') {
-    const symbolMap = { low: '○', medium: '◐', high: '●', max: '◉' };
-    const shortMap  = { low: 'L', medium: 'M', high: 'H', max: 'X' };
-    const rawVal    = getNestedValue(data, 'effort_level') || 'medium';
+  if (field.type === 'effort') {
+    const symbolMap = { low: '○', medium: '◐', high: '●', xhigh: '⬤', max: '◉' };
+    const shortMap  = { low: 'L', medium: 'M', high: 'H', xhigh: 'XH', max: 'X' };
+    const rawVal    = getNestedValue(data, 'effort.level') || 'medium';
     const sym       = symbolMap[rawVal] ?? rawVal[0];
-    const sh        = shortMap[rawVal]  ?? rawVal[0].toUpperCase();
+    const sh        = shortMap[rawVal]  ?? rawVal.toUpperCase();
     const rendered  = { raw: rawVal, short: sh, symbol: sym, 'icon+raw': `${sym} ${rawVal}`, 'icon+short': `${sym} ${sh}` }[field.format] ?? rawVal;
+    return `<span style="${style}">${escapeHtml(rendered)}</span>`;
+  }
+
+  if (field.type === 'effort_level') {
+    // Deprecated — old configs render a placeholder label
+    return `<span style="${style};opacity:0.5;">[effort_level deprecated]</span>`;
+  }
+
+  if (field.type === 'thinking_enabled') {
+    const enabled = getNestedValue(data, 'thinking.enabled');
+    if (enabled === undefined || enabled === null) return '';
+    const sym      = enabled ? '💭' : '○';
+    const sh       = enabled ? 'T' : '-';
+    const rawStr   = enabled ? 'true' : 'false';
+    const rendered = { raw: rawStr, short: sh, symbol: sym, 'icon+raw': `${sym} ${rawStr}`, 'icon+short': `${sym} ${sh}` }[field.format] ?? rawStr;
     return `<span style="${style}">${escapeHtml(rendered)}</span>`;
   }
 
