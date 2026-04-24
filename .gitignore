@@ -1,6 +1,9 @@
 .tmp/
 .superpowers/
+.worktrees/
 statusline-config.json
 last-payload.json
 rate-limits-cache.json
 statusline-new-fields.log
+statusline-error.log
+statusline-diag.log
