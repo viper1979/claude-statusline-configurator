@@ -1473,144 +1473,8 @@ Describe 'Format-Line-Group single line' {
     }
 }
 
-Describe 'Get-EffortLevel' {
-    It 'returns effortLevel from user settings when project settings are absent' {
-        # Arrange: write a user settings file with effortLevel
-        $userDir = Join-Path $TestDrive 'user-effort'
-        New-Item -ItemType Directory -Path (Join-Path $userDir '.claude') -Force | Out-Null
-        $userSettings = Join-Path $userDir '.claude\settings.json'
-        @{ effortLevel = 'high' } | ConvertTo-Json | Set-Content -Path $userSettings -Encoding UTF8
-
-        # Act: override USERPROFILE env var so Get-EffortLevel reads from our temp dir.
-        # Push-Location to a clean dir so no project .claude/settings.json is found.
-        $emptyProject = Join-Path $TestDrive 'empty-project'
-        New-Item -ItemType Directory -Path $emptyProject -Force | Out-Null
-        $result = Push-Location $emptyProject
-        try {
-            $env:USERPROFILE_BACKUP = $env:USERPROFILE
-            $env:USERPROFILE = $userDir
-            $result = Get-EffortLevel
-        } finally {
-            $env:USERPROFILE = $env:USERPROFILE_BACKUP
-            Remove-Item Env:USERPROFILE_BACKUP -ErrorAction SilentlyContinue
-            Pop-Location
-        }
-
-        # Assert
-        $result | Should -Be 'high'
-    }
-
-    It 'project .claude/settings.json overrides user settings' {
-        # Arrange: user settings say "medium", project says "max"
-        $userDir = Join-Path $TestDrive 'user-effort-override'
-        New-Item -ItemType Directory -Path (Join-Path $userDir '.claude') -Force | Out-Null
-        $userSettings = Join-Path $userDir '.claude\settings.json'
-        @{ effortLevel = 'medium' } | ConvertTo-Json | Set-Content -Path $userSettings -Encoding UTF8
-
-        $projectDir = Join-Path $TestDrive 'project-effort-override'
-        New-Item -ItemType Directory -Path (Join-Path $projectDir '.claude') -Force | Out-Null
-        $projectSettings = Join-Path $projectDir '.claude\settings.json'
-        @{ effortLevel = 'max' } | ConvertTo-Json | Set-Content -Path $projectSettings -Encoding UTF8
-
-        $result = Push-Location $projectDir
-        try {
-            $env:USERPROFILE_BACKUP = $env:USERPROFILE
-            $env:USERPROFILE = $userDir
-            $result = Get-EffortLevel
-        } finally {
-            $env:USERPROFILE = $env:USERPROFILE_BACKUP
-            Remove-Item Env:USERPROFILE_BACKUP -ErrorAction SilentlyContinue
-            Pop-Location
-        }
-
-        $result | Should -Be 'max'
-    }
-
-    It 'returns null when neither file has effortLevel' {
-        $userDir = Join-Path $TestDrive 'user-no-effort'
-        New-Item -ItemType Directory -Path (Join-Path $userDir '.claude') -Force | Out-Null
-        @{ model = 'opus' } | ConvertTo-Json | Set-Content -Path (Join-Path $userDir '.claude\settings.json') -Encoding UTF8
-
-        $emptyProject = Join-Path $TestDrive 'project-no-effort'
-        New-Item -ItemType Directory -Path $emptyProject -Force | Out-Null
-        $result = Push-Location $emptyProject
-        try {
-            $env:USERPROFILE_BACKUP = $env:USERPROFILE
-            $env:USERPROFILE = $userDir
-            $result = Get-EffortLevel
-        } finally {
-            $env:USERPROFILE = $env:USERPROFILE_BACKUP
-            Remove-Item Env:USERPROFILE_BACKUP -ErrorAction SilentlyContinue
-            Pop-Location
-        }
-
-        $result | Should -BeNullOrEmpty
-    }
-
-    It 'silently ignores corrupted settings file and falls through' {
-        $userDir = Join-Path $TestDrive 'user-corrupt-effort'
-        New-Item -ItemType Directory -Path (Join-Path $userDir '.claude') -Force | Out-Null
-        Set-Content -Path (Join-Path $userDir '.claude\settings.json') -Value 'not valid json {{{' -Encoding UTF8
-
-        $emptyProject = Join-Path $TestDrive 'project-corrupt-effort'
-        New-Item -ItemType Directory -Path $emptyProject -Force | Out-Null
-        $result = Push-Location $emptyProject
-        try {
-            $env:USERPROFILE_BACKUP = $env:USERPROFILE
-            $env:USERPROFILE = $userDir
-            { Get-EffortLevel } | Should -Not -Throw
-            $result = Get-EffortLevel
-        } finally {
-            $env:USERPROFILE = $env:USERPROFILE_BACKUP
-            Remove-Item Env:USERPROFILE_BACKUP -ErrorAction SilentlyContinue
-            Pop-Location
-        }
-
-        $result | Should -BeNullOrEmpty
-    }
-}
-
-Describe 'Invoke-Main effort_level enrichment' {
-    BeforeAll {
-        $effortDir = Join-Path $TestDrive 'effort-enrich'
-        New-Item -ItemType Directory -Path $effortDir -Force | Out-Null
-        $effortConfig = Join-Path $effortDir 'statusline-config.json'
-        @{
-            lines = @(@{
-                fields = @(@{
-                    type   = 'effort_level'
-                    format = 'raw'
-                    fg     = $null
-                    bg     = $null
-                })
-            })
-            knownKeys = @('effort_level')
-        } | ConvertTo-Json -Depth 10 | Set-Content -Path $effortConfig -Encoding UTF8
-    }
-
-    It 'enriches effort_level from user settings.json when stdin lacks it' {
-        $userDir = Join-Path $TestDrive 'effort-enrich-user'
-        New-Item -ItemType Directory -Path (Join-Path $userDir '.claude') -Force | Out-Null
-        @{ effortLevel = 'high' } | ConvertTo-Json | Set-Content -Path (Join-Path $userDir '.claude\settings.json') -Encoding UTF8
-
-        $emptyProject = Join-Path $TestDrive 'effort-enrich-project'
-        New-Item -ItemType Directory -Path $emptyProject -Force | Out-Null
-        $result = Push-Location $emptyProject
-        try {
-            $env:USERPROFILE_BACKUP = $env:USERPROFILE
-            $env:USERPROFILE = $userDir
-            $result = Invoke-Main -ConfigPath $effortConfig -InputJson '{}'
-        } finally {
-            $env:USERPROFILE = $env:USERPROFILE_BACKUP
-            Remove-Item Env:USERPROFILE_BACKUP -ErrorAction SilentlyContinue
-            Pop-Location
-        }
-
-        $result | Should -Be 'high'
-    }
-}
-
-Describe 'Format-Field effort_level rendering' {
+Describe 'Format-Field effort rendering' {
+    # Tests for the native effort.level field (nested payload path).
     BeforeAll {
         $script:ThemeFg   = $null
         $script:ThemeBg   = $null
@@ -1619,96 +1483,223 @@ Describe 'Format-Field effort_level rendering' {
 
         function script:Make-EffortField($fmt) {
             [PSCustomObject]@{
-                type        = 'effort_level'
-                format      = $fmt
-                fg          = $null
-                bg          = $null
-                fgOverride  = $false
-                bgOverride  = $false
+                type       = 'effort'
+                format     = $fmt
+                fg         = $null
+                bg         = $null
+                fgOverride = $false
+                bgOverride = $false
             }
         }
 
         function script:Make-EffortData($level) {
-            [PSCustomObject]@{ effort_level = $level }
+            # Mimic native payload structure: effort.level (nested)
+            [PSCustomObject]@{
+                effort = [PSCustomObject]@{ level = $level }
+            }
         }
     }
 
-    It "format=raw returns raw value 'medium'" {
-        Format-Field (Make-EffortField 'raw') (Make-EffortData 'medium') | Should -Be 'medium'
+    It "format=raw returns raw value '<level>'" -ForEach @(
+        @{ level = 'low'   ; expected = 'low'   }
+        @{ level = 'medium'; expected = 'medium' }
+        @{ level = 'high'  ; expected = 'high'   }
+        @{ level = 'xhigh' ; expected = 'xhigh'  }
+        @{ level = 'max'   ; expected = 'max'    }
+    ) {
+        # Arrange / Act
+        $result = Format-Field (Make-EffortField 'raw') (Make-EffortData $level)
+        # Assert
+        $result | Should -Be $expected
     }
 
-    It "format=raw returns raw value 'low'" {
-        Format-Field (Make-EffortField 'raw') (Make-EffortData 'low') | Should -Be 'low'
-    }
-
-    It "format=short returns 'M' for medium" {
-        Format-Field (Make-EffortField 'short') (Make-EffortData 'medium') | Should -Be 'M'
-    }
-
-    It "format=short returns 'L' for low" {
-        Format-Field (Make-EffortField 'short') (Make-EffortData 'low') | Should -Be 'L'
-    }
-
-    It "format=short returns 'H' for high" {
-        Format-Field (Make-EffortField 'short') (Make-EffortData 'high') | Should -Be 'H'
-    }
-
-    It "format=short returns 'X' for max" {
-        Format-Field (Make-EffortField 'short') (Make-EffortData 'max') | Should -Be 'X'
-    }
-
-    It 'format=symbol emits correct UTF-8 bytes for medium (U+25D0 ◐)' {
-        $output = Format-Field (Make-EffortField 'symbol') (Make-EffortData 'medium')
-        $bytes  = [System.Text.Encoding]::UTF8.GetBytes($output)
-        $hex    = ($bytes | ForEach-Object { '{0:X2}' -f $_ }) -join ''
-        # U+25D0 ◐ → UTF-8: E2 97 90
-        $hex | Should -Match 'E29790'
+    It "format=short returns '<expected>' for <level>" -ForEach @(
+        @{ level = 'low'   ; expected = 'L'  }
+        @{ level = 'medium'; expected = 'M'  }
+        @{ level = 'high'  ; expected = 'H'  }
+        @{ level = 'xhigh' ; expected = 'XH' }
+        @{ level = 'max'   ; expected = 'X'  }
+    ) {
+        # Arrange / Act
+        $result = Format-Field (Make-EffortField 'short') (Make-EffortData $level)
+        # Assert
+        $result | Should -Be $expected
     }
 
     It 'format=symbol emits correct UTF-8 bytes for low (U+25CB ○)' {
+        # Arrange / Act
         $output = Format-Field (Make-EffortField 'symbol') (Make-EffortData 'low')
-        $bytes  = [System.Text.Encoding]::UTF8.GetBytes($output)
-        $hex    = ($bytes | ForEach-Object { '{0:X2}' -f $_ }) -join ''
-        # U+25CB ○ → UTF-8: E2 97 8B
+        $hex    = ([System.Text.Encoding]::UTF8.GetBytes($output) | ForEach-Object { '{0:X2}' -f $_ }) -join ''
+        # Assert: U+25CB ○ → UTF-8 E2 97 8B
         $hex | Should -Match 'E2978B'
     }
 
-    It 'format=symbol emits correct UTF-8 bytes for high (U+25CF ●)' {
-        $output = Format-Field (Make-EffortField 'symbol') (Make-EffortData 'high')
-        $bytes  = [System.Text.Encoding]::UTF8.GetBytes($output)
-        $hex    = ($bytes | ForEach-Object { '{0:X2}' -f $_ }) -join ''
-        # U+25CF ● → UTF-8: E2 97 8F
-        $hex | Should -Match 'E2978F'
-    }
-
-    It 'format=symbol emits correct UTF-8 bytes for max (U+25C9 ◉)' {
-        $output = Format-Field (Make-EffortField 'symbol') (Make-EffortData 'max')
-        $bytes  = [System.Text.Encoding]::UTF8.GetBytes($output)
-        $hex    = ($bytes | ForEach-Object { '{0:X2}' -f $_ }) -join ''
-        # U+25C9 ◉ → UTF-8: E2 97 89
-        $hex | Should -Match 'E29789'
-    }
-
-    It "format=icon+raw returns symbol and raw value for medium" {
-        $output = Format-Field (Make-EffortField 'icon+raw') (Make-EffortData 'medium')
-        $output | Should -Match 'medium'
-        # Symbol ◐ must be present (UTF-8 E2 97 90)
-        $bytes = [System.Text.Encoding]::UTF8.GetBytes($output)
-        $hex   = ($bytes | ForEach-Object { '{0:X2}' -f $_ }) -join ''
+    It 'format=symbol emits correct UTF-8 bytes for medium (U+25D0 ◐)' {
+        # Arrange / Act
+        $output = Format-Field (Make-EffortField 'symbol') (Make-EffortData 'medium')
+        $hex    = ([System.Text.Encoding]::UTF8.GetBytes($output) | ForEach-Object { '{0:X2}' -f $_ }) -join ''
+        # Assert: U+25D0 ◐ → UTF-8 E2 97 90
         $hex | Should -Match 'E29790'
     }
 
-    It "format=icon+short returns symbol and short char for high" {
-        $output = Format-Field (Make-EffortField 'icon+short') (Make-EffortData 'high')
-        $output | Should -Match 'H'
-        # Symbol ● must be present (UTF-8 E2 97 8F)
-        $bytes = [System.Text.Encoding]::UTF8.GetBytes($output)
-        $hex   = ($bytes | ForEach-Object { '{0:X2}' -f $_ }) -join ''
+    It 'format=symbol emits correct UTF-8 bytes for high (U+25CF ●)' {
+        # Arrange / Act
+        $output = Format-Field (Make-EffortField 'symbol') (Make-EffortData 'high')
+        $hex    = ([System.Text.Encoding]::UTF8.GetBytes($output) | ForEach-Object { '{0:X2}' -f $_ }) -join ''
+        # Assert: U+25CF ● → UTF-8 E2 97 8F
         $hex | Should -Match 'E2978F'
     }
 
-    It 'returns empty string when effort_level is null' {
+    It 'format=symbol emits correct UTF-8 bytes for xhigh (U+2B24 ⬤)' {
+        # Arrange / Act
+        $output = Format-Field (Make-EffortField 'symbol') (Make-EffortData 'xhigh')
+        $hex    = ([System.Text.Encoding]::UTF8.GetBytes($output) | ForEach-Object { '{0:X2}' -f $_ }) -join ''
+        # Assert: U+2B24 ⬤ → UTF-8 E2 AC A4
+        $hex | Should -Match 'E2ACA4'
+    }
+
+    It 'format=symbol emits correct UTF-8 bytes for max (U+25C9 ◉)' {
+        # Arrange / Act
+        $output = Format-Field (Make-EffortField 'symbol') (Make-EffortData 'max')
+        $hex    = ([System.Text.Encoding]::UTF8.GetBytes($output) | ForEach-Object { '{0:X2}' -f $_ }) -join ''
+        # Assert: U+25C9 ◉ → UTF-8 E2 97 89
+        $hex | Should -Match 'E29789'
+    }
+
+    It 'format=icon+raw contains symbol and raw value for medium' {
+        # Arrange / Act
+        $output = Format-Field (Make-EffortField 'icon+raw') (Make-EffortData 'medium')
+        $hex    = ([System.Text.Encoding]::UTF8.GetBytes($output) | ForEach-Object { '{0:X2}' -f $_ }) -join ''
+        # Assert
+        $output | Should -Match 'medium'
+        $hex | Should -Match 'E29790'  # ◐
+    }
+
+    It 'format=icon+short contains symbol and short char for xhigh' {
+        # Arrange / Act
+        $output = Format-Field (Make-EffortField 'icon+short') (Make-EffortData 'xhigh')
+        $hex    = ([System.Text.Encoding]::UTF8.GetBytes($output) | ForEach-Object { '{0:X2}' -f $_ }) -join ''
+        # Assert
+        $output | Should -Match 'XH'
+        $hex | Should -Match 'E2ACA4'  # ⬤
+    }
+
+    It 'returns empty string when effort.level is absent' {
+        # Arrange / Act / Assert
         Format-Field (Make-EffortField 'raw') ([PSCustomObject]@{}) | Should -Be ''
+    }
+}
+
+Describe 'Format-Field effort_level deprecated stub' {
+    # The old effort_level field type must not crash old configs — it silently returns ''.
+    BeforeAll {
+        $script:ThemeFg          = $null
+        $script:ThemeBg          = $null
+        $script:ThemesMap        = @{}
+        $script:PathKeys         = @()
+        $script:DeprecationWarned = $null  # reset gate so the log write triggers fresh
+    }
+
+    It 'returns empty string and does not throw for effort_level type' {
+        # Arrange
+        $field = [PSCustomObject]@{
+            type       = 'effort_level'
+            format     = 'raw'
+            fg         = $null
+            bg         = $null
+            fgOverride = $false
+            bgOverride = $false
+        }
+        $data = [PSCustomObject]@{ effort = [PSCustomObject]@{ level = 'high' } }
+
+        # Act / Assert
+        { Format-Field $field $data } | Should -Not -Throw
+        Format-Field $field $data    | Should -Be ''
+    }
+}
+
+Describe 'Format-Field thinking_enabled rendering' {
+    BeforeAll {
+        $script:ThemeFg   = $null
+        $script:ThemeBg   = $null
+        $script:ThemesMap = @{}
+        $script:PathKeys  = @()
+
+        function script:Make-ThinkingField($fmt) {
+            [PSCustomObject]@{
+                type       = 'thinking_enabled'
+                format     = $fmt
+                fg         = $null
+                bg         = $null
+                fgOverride = $false
+                bgOverride = $false
+            }
+        }
+
+        function script:Make-ThinkingData($enabled) {
+            [PSCustomObject]@{
+                thinking = [PSCustomObject]@{ enabled = $enabled }
+            }
+        }
+    }
+
+    It "format=raw returns 'true' when enabled" {
+        # Arrange / Act / Assert
+        Format-Field (Make-ThinkingField 'raw') (Make-ThinkingData $true) | Should -Be 'true'
+    }
+
+    It "format=raw returns 'false' when disabled" {
+        # Arrange / Act / Assert
+        Format-Field (Make-ThinkingField 'raw') (Make-ThinkingData $false) | Should -Be 'false'
+    }
+
+    It "format=short returns 'T' when enabled" {
+        # Arrange / Act / Assert
+        Format-Field (Make-ThinkingField 'short') (Make-ThinkingData $true) | Should -Be 'T'
+    }
+
+    It "format=short returns '-' when disabled" {
+        # Arrange / Act / Assert
+        Format-Field (Make-ThinkingField 'short') (Make-ThinkingData $false) | Should -Be '-'
+    }
+
+    It 'format=symbol emits 💭 (U+1F4AD) UTF-8 bytes when enabled' {
+        # Arrange / Act
+        $output = Format-Field (Make-ThinkingField 'symbol') (Make-ThinkingData $true)
+        $hex    = ([System.Text.Encoding]::UTF8.GetBytes($output) | ForEach-Object { '{0:X2}' -f $_ }) -join ''
+        # Assert: U+1F4AD 💭 → UTF-8 F0 9F 92 AD
+        $hex | Should -Match 'F09F92AD'
+    }
+
+    It 'format=symbol emits ○ (U+25CB) UTF-8 bytes when disabled' {
+        # Arrange / Act
+        $output = Format-Field (Make-ThinkingField 'symbol') (Make-ThinkingData $false)
+        $hex    = ([System.Text.Encoding]::UTF8.GetBytes($output) | ForEach-Object { '{0:X2}' -f $_ }) -join ''
+        # Assert: U+25CB ○ → UTF-8 E2 97 8B
+        $hex | Should -Match 'E2978B'
+    }
+
+    It 'format=icon+raw contains 💭 and raw value when enabled' {
+        # Arrange / Act
+        $output = Format-Field (Make-ThinkingField 'icon+raw') (Make-ThinkingData $true)
+        $hex    = ([System.Text.Encoding]::UTF8.GetBytes($output) | ForEach-Object { '{0:X2}' -f $_ }) -join ''
+        # Assert
+        $output | Should -Match 'true'
+        $hex | Should -Match 'F09F92AD'
+    }
+
+    It 'format=icon+short contains 💭 and T when enabled' {
+        # Arrange / Act
+        $output = Format-Field (Make-ThinkingField 'icon+short') (Make-ThinkingData $true)
+        $hex    = ([System.Text.Encoding]::UTF8.GetBytes($output) | ForEach-Object { '{0:X2}' -f $_ }) -join ''
+        # Assert
+        $output | Should -Match 'T'
+        $hex | Should -Match 'F09F92AD'
+    }
+
+    It 'returns empty string when thinking.enabled is absent' {
+        # Arrange / Act / Assert
+        Format-Field (Make-ThinkingField 'raw') ([PSCustomObject]@{}) | Should -Be ''
     }
 }
 
