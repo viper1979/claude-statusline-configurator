@@ -11,6 +11,10 @@ Set-StrictMode -Off
 $OutputEncoding           = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'SilentlyContinue'
 
+# Diagnostic mode: set CCSTATUSLINE_DIAG=1 to emit statusline-diag.log next to the script.
+# Has zero impact on rendered output and no overhead when disabled.
+$script:DiagMode = $env:CCSTATUSLINE_DIAG -eq '1'
+
 <#
 .SYNOPSIS
     Writes a diagnostic message to statusline-error.log next to the script,
@@ -30,6 +34,143 @@ function Write-StatuslineError {
         # Ignore log write failures
     }
     return "[❌ statusline] $Message"
+}
+
+# ─── Diagnostic Logging Helpers ───────────────────────────────────────────────
+# All functions are no-ops unless $script:DiagMode is $true (CCSTATUSLINE_DIAG=1).
+
+<#
+.SYNOPSIS
+    Returns the UTF-8 byte dump of a string as space-separated uppercase hex pairs.
+.PARAMETER Text
+    Input string to encode and dump.
+.OUTPUTS
+    String like "E2 96 93 20 E2 96 91"
+#>
+function Format-DiagHex {
+    param([string]$Text)
+    if ([string]::IsNullOrEmpty($Text)) { return '' }
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($Text)
+    return ($bytes | ForEach-Object { $_.ToString('X2') }) -join ' '
+}
+
+<#
+.SYNOPSIS
+    Returns a human-readable codepoint list for all non-ASCII characters in a string.
+.PARAMETER Text
+    Input string (ANSI sequences are stripped internally).
+.OUTPUTS
+    String like "U+2593 ▓  U+2591 ░" or "(ASCII only)"
+#>
+function Format-DiagCodepoints {
+    param([string]$Text)
+    if ([string]::IsNullOrEmpty($Text)) { return '(empty)' }
+    $clean = $Text -replace "`e\[[0-9;]*m", ''
+    $parts = [System.Collections.Generic.List[string]]::new()
+    $i = 0
+    while ($i -lt $clean.Length) {
+        $ch = $clean[$i]
+        if ([char]::IsHighSurrogate($ch) -and ($i + 1) -lt $clean.Length -and [char]::IsLowSurrogate($clean[$i + 1])) {
+            $cp    = [char]::ConvertToUtf32($ch, $clean[$i + 1])
+            $glyph = "$ch$($clean[$i + 1])"
+            $label = 'U+{0:X4} {1}' -f $cp, $glyph
+            $parts.Add($label)
+            $i += 2
+        } else {
+            if ([int][char]$ch -gt 0x7F) {
+                $label = 'U+{0:X4} {1}' -f ([int][char]$ch), $ch
+                $parts.Add($label)
+            }
+            $i++
+        }
+    }
+    if ($parts.Count -eq 0) { return '(ASCII only)' }
+    return $parts -join '  '
+}
+
+<#
+.SYNOPSIS
+    Collects environment and terminal information for a diagnostic snapshot.
+.OUTPUTS
+    Ordered hashtable of key=value pairs.
+#>
+function Get-DiagEnvInfo {
+    $info = [ordered]@{}
+    $info['PSVersion']    = "$($PSVersionTable.PSVersion) ($($PSVersionTable.PSEdition))"
+    $info['OS']           = if ($PSVersionTable.OS) { $PSVersionTable.OS } else { [System.Environment]::OSVersion.VersionString }
+    $info['HostName']     = $Host.Name
+    $info['HostVersion']  = $Host.Version
+    $info['WindowWidth']  = [Console]::WindowWidth
+    $info['BufferWidth']  = [Console]::BufferWidth
+    $info['InputCP']      = [Console]::InputEncoding.CodePage
+    $info['OutputCP']     = [Console]::OutputEncoding.CodePage
+    $info['OutputEncVar'] = $OutputEncoding.CodePage
+    $info['WT_SESSION']   = if ($env:WT_SESSION)   { $env:WT_SESSION }   else { '(not set)' }
+    $info['TERM_PROGRAM'] = if ($env:TERM_PROGRAM)  { $env:TERM_PROGRAM }  else { '(not set)' }
+    $info['TERM']         = if ($env:TERM)          { $env:TERM }          else { '(not set)' }
+    $info['ConEmuPID']    = if ($env:ConEmuPID)     { $env:ConEmuPID }     else { '(not set)' }
+    $info['VSCODE_PID']   = if ($env:VSCODE_PID)    { $env:VSCODE_PID }    else { '(not set)' }
+    # Windows Terminal font detection — read-only, silent on failure
+    try {
+        $wtPattern  = Join-Path $env:LOCALAPPDATA 'Packages\Microsoft.WindowsTerminal_*\LocalState\settings.json'
+        $wtFile     = Get-Item -Path $wtPattern -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($wtFile) {
+            $wtJson = Get-Content -Path $wtFile.FullName -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction SilentlyContinue
+            $info['WT_DefaultFont'] = if ($wtJson.profiles.defaults.font.face) { $wtJson.profiles.defaults.font.face } else { '(not set)' }
+        } else {
+            $info['WT_DefaultFont'] = '(WT settings not found)'
+        }
+    } catch {
+        $info['WT_DefaultFont'] = '(detection failed)'
+    }
+    return $info
+}
+
+<#
+.SYNOPSIS
+    Appends a labeled section with lines to statusline-diag.log. No-op when DiagMode is off.
+.PARAMETER Section
+    Section header label (e.g. 'Environment').
+.PARAMETER Lines
+    Array of content strings to write indented under the header.
+#>
+function Write-StatuslineDiag {
+    param([string]$Section, [string[]]$Lines)
+    if (-not $script:DiagMode) { return }
+    try {
+        $logPath = Join-Path $PSScriptRoot 'statusline-diag.log'
+        $out = [System.Collections.Generic.List[string]]::new()
+        $out.Add("  [$Section]")
+        foreach ($l in $Lines) { $out.Add("    $l") }
+        Add-Content -Path $logPath -Value $out -Encoding UTF8
+    } catch { }
+}
+
+<#
+.SYNOPSIS
+    Writes the opening timestamp/marker block to statusline-diag.log. No-op when DiagMode is off.
+#>
+function Write-DiagHeader {
+    if (-not $script:DiagMode) { return }
+    try {
+        $logPath = Join-Path $PSScriptRoot 'statusline-diag.log'
+        $ts = Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff'
+        $sep = '═' * 60
+        Add-Content -Path $logPath -Value @($sep, "DIAG $ts", $sep) -Encoding UTF8
+    } catch { }
+}
+
+<#
+.SYNOPSIS
+    Writes the closing marker block to statusline-diag.log. No-op when DiagMode is off.
+#>
+function Write-DiagFooter {
+    if (-not $script:DiagMode) { return }
+    try {
+        $logPath = Join-Path $PSScriptRoot 'statusline-diag.log'
+        $sep = '═' * 60
+        Add-Content -Path $logPath -Value @($sep, 'END DIAG', '') -Encoding UTF8
+    } catch { }
 }
 
 <#
@@ -487,8 +628,13 @@ function Format-Field {
         'thinking_enabled' {
             $raw = Get-NestedValue $Data 'thinking.enabled'
             if ($null -eq $raw) { return '' }
-            $isEnabled = [bool]$raw
-            $symbol    = if ($isEnabled) { [char]::ConvertFromUtf32(0x1F4AD) } else { [char]0x25CB }  # 💭 / ○
+            $isEnabled   = [bool]$raw
+            $defaultTrue  = [char]::ConvertFromUtf32(0x1F4AD)  # 💭
+            $defaultFalse = [char]0x25CB                       # ○
+            $opts         = $Field.formatOptions
+            $trueSym      = if ($opts -and $opts.trueSymbol)  { [string]$opts.trueSymbol }  else { $defaultTrue }
+            $falseSym     = if ($opts -and $opts.falseSymbol) { [string]$opts.falseSymbol } else { $defaultFalse }
+            $symbol    = if ($isEnabled) { $trueSym } else { $falseSym }
             $shortChar = if ($isEnabled) { 'T' } else { '-' }
             $rawStr    = if ($isEnabled) { 'true' } else { 'false' }
             $rendered  = switch ($Field.format) {
@@ -701,8 +847,18 @@ function Format-Line-Group {
         for ($g = 0; $g -lt $renderedGroups.Count; $g++) {
             $text    = $renderedGroups[$g]
             $isLast  = $g -eq $renderedGroups.Count - 1
-            $padding = if (-not $isLast) { $maxWidths[$g] - (Get-VisibleWidth $text) } else { 0 }
+            $visW    = Get-VisibleWidth $text
+            $padding = if (-not $isLast) { $maxWidths[$g] - $visW } else { 0 }
             $lineParts.Add($text + (' ' * [math]::Max(0, $padding)))
+            if ($script:DiagMode) {
+                $clean = $text -replace "`e\[[0-9;]*m", ''
+                Write-StatuslineDiag 'Group-Trace' @(
+                    "g=$g  visW=$visW  maxW=$($maxWidths[$g])  pad=$padding"
+                    "strip: $clean"
+                    "hex  : $(Format-DiagHex $clean)"
+                    "cpnt : $(Format-DiagCodepoints $clean)"
+                )
+            }
         }
         $outputLines.Add($lineParts -join '')
     }
@@ -919,6 +1075,38 @@ function Invoke-Main {
         return Write-StatuslineError "Input JSON invalid: $_"
     }
 
+    # ─── Diagnostic: header + environment + config + input snapshot ───────────
+    if ($script:DiagMode) {
+        Write-DiagHeader
+
+        $envInfo  = Get-DiagEnvInfo
+        $envLines = @($envInfo.GetEnumerator() | ForEach-Object { "$($_.Key) = $($_.Value)" })
+        Write-StatuslineDiag 'Environment' $envLines
+
+        $cfgHash = try {
+            $hashBytes = [System.Security.Cryptography.SHA256]::Create().ComputeHash(
+                [System.Text.Encoding]::UTF8.GetBytes((Get-Content -Path $ConfigPath -Raw -Encoding UTF8))
+            )
+            ($hashBytes | ForEach-Object { $_.ToString('X2') }) -join ''
+        } catch { '(hash failed)' }
+        Write-StatuslineDiag 'Config-Snapshot' @(
+            "Path          = $ConfigPath"
+            "SHA256        = $cfgHash"
+            "barCharset    = $($config.barCharset)"
+            "progressStyle = $($config.progressStyle)"
+            "separator     = $($config.separator)"
+            "colAlign      = $($config.columnAlignmentEnabled)"
+            "activeTheme   = $($config.activeTheme)"
+        )
+
+        # Mask filesystem paths that could reveal the user's folder structure
+        $maskedJson = $InputJson `
+            -replace '"cwd"\s*:\s*"[^"]*"',             '"cwd": "(masked)"' `
+            -replace '"transcript_path"\s*:\s*"[^"]*"', '"transcript_path": "(masked)"'
+        Write-StatuslineDiag 'Input-JSON' @($maskedJson)
+    }
+    # ─────────────────────────────────────────────────────────────────────────
+
     # Auto-detect git branch via git command when not provided in JSON input.
     # Wrapped in try-catch because git might not be installed on this system.
     if (-not (Get-NestedValue $data 'worktree.branch')) {
@@ -1011,5 +1199,20 @@ if ($MyInvocation.InvocationName -ne '.') {
     } catch {
         Write-StatuslineError "Unexpected error: $_"
     }
-    if ($result) { Write-Output $result }
+    if ($result) {
+        if ($script:DiagMode) {
+            $resultLines = $result -split "`n"
+            $traceLines  = [System.Collections.Generic.List[string]]::new()
+            for ($li = 0; $li -lt $resultLines.Count; $li++) {
+                $raw   = $resultLines[$li]
+                $clean = $raw -replace "`e\[[0-9;]*m", ''
+                $traceLines.Add("line[$li]: rawLen=$($raw.Length)  visW=$($clean.Length)")
+                $traceLines.Add("  hex: $(Format-DiagHex $clean)")
+                $traceLines.Add("  cpt: $(Format-DiagCodepoints $clean)")
+            }
+            Write-StatuslineDiag 'Output-Trace' $traceLines.ToArray()
+            Write-DiagFooter
+        }
+        Write-Output $result
+    }
 }

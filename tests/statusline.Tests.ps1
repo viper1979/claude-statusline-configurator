@@ -1625,14 +1625,15 @@ Describe 'Format-Field thinking_enabled rendering' {
         $script:ThemesMap = @{}
         $script:PathKeys  = @()
 
-        function script:Make-ThinkingField($fmt) {
+        function script:Make-ThinkingField($fmt, $formatOptions = $null) {
             [PSCustomObject]@{
-                type       = 'thinking_enabled'
-                format     = $fmt
-                fg         = $null
-                bg         = $null
-                fgOverride = $false
-                bgOverride = $false
+                type          = 'thinking_enabled'
+                format        = $fmt
+                fg            = $null
+                bg            = $null
+                fgOverride    = $false
+                bgOverride    = $false
+                formatOptions = $formatOptions
             }
         }
 
@@ -1700,6 +1701,71 @@ Describe 'Format-Field thinking_enabled rendering' {
     It 'returns empty string when thinking.enabled is absent' {
         # Arrange / Act / Assert
         Format-Field (Make-ThinkingField 'raw') ([PSCustomObject]@{}) | Should -Be ''
+    }
+
+    It 'ThinkingEnabled_WithCustomTrueSymbol_RendersCustomSymbol' {
+        # Arrange
+        $opts  = [PSCustomObject]@{ trueSymbol = [char]::ConvertFromUtf32(0x1F9E0) }  # 🧠 U+1F9E0
+        $field = Make-ThinkingField 'symbol' $opts
+
+        # Act
+        $output = Format-Field $field (Make-ThinkingData $true)
+
+        # Assert: output contains 🧠 (UTF-8 F0 9F A7 A0)
+        $hex = ([System.Text.Encoding]::UTF8.GetBytes($output) | ForEach-Object { '{0:X2}' -f $_ }) -join ''
+        $hex | Should -Match 'F09FA7A0'
+    }
+
+    It 'ThinkingEnabled_WithCustomFalseSymbol_RendersCustomSymbol' {
+        # Arrange
+        $opts  = [PSCustomObject]@{ falseSymbol = [char]0x274C }  # ❌ U+274C
+        $field = Make-ThinkingField 'symbol' $opts
+
+        # Act
+        $output = Format-Field $field (Make-ThinkingData $false)
+
+        # Assert: output contains ❌ (UTF-8 E2 9D 8C)
+        $hex = ([System.Text.Encoding]::UTF8.GetBytes($output) | ForEach-Object { '{0:X2}' -f $_ }) -join ''
+        $hex | Should -Match 'E29D8C'
+    }
+
+    It 'ThinkingEnabled_WithoutFormatOptions_RendersDefaultSymbols' {
+        # Arrange / Act
+        $trueOutput  = Format-Field (Make-ThinkingField 'symbol' $null) (Make-ThinkingData $true)
+        $falseOutput = Format-Field (Make-ThinkingField 'symbol' $null) (Make-ThinkingData $false)
+        $hexTrue  = ([System.Text.Encoding]::UTF8.GetBytes($trueOutput)  | ForEach-Object { '{0:X2}' -f $_ }) -join ''
+        $hexFalse = ([System.Text.Encoding]::UTF8.GetBytes($falseOutput) | ForEach-Object { '{0:X2}' -f $_ }) -join ''
+
+        # Assert: default 💭 (F0 9F 92 AD) and ○ (E2 97 8B)
+        $hexTrue  | Should -Match 'F09F92AD'
+        $hexFalse | Should -Match 'E2978B'
+    }
+
+    It 'ThinkingEnabled_IconRawWithCustomSymbol_RendersCustomSymbolPlusRaw' {
+        # Arrange
+        $opts  = [PSCustomObject]@{ trueSymbol = [char]::ConvertFromUtf32(0x1F9E0) }  # 🧠
+        $field = Make-ThinkingField 'icon+raw' $opts
+
+        # Act
+        $output = Format-Field $field (Make-ThinkingData $true)
+
+        # Assert: contains 🧠 bytes AND the word "true"
+        $hex = ([System.Text.Encoding]::UTF8.GetBytes($output) | ForEach-Object { '{0:X2}' -f $_ }) -join ''
+        $hex    | Should -Match 'F09FA7A0'
+        $output | Should -Match 'true'
+    }
+
+    It 'ThinkingEnabled_EmptyCustomSymbol_FallsBackToDefault' {
+        # Arrange: trueSymbol is an empty string — should fall back to 💭
+        $opts  = [PSCustomObject]@{ trueSymbol = '' }
+        $field = Make-ThinkingField 'symbol' $opts
+
+        # Act
+        $output = Format-Field $field (Make-ThinkingData $true)
+
+        # Assert: default 💭 (F0 9F 92 AD)
+        $hex = ([System.Text.Encoding]::UTF8.GetBytes($output) | ForEach-Object { '{0:X2}' -f $_ }) -join ''
+        $hex | Should -Match 'F09F92AD'
     }
 }
 
@@ -1785,6 +1851,171 @@ Describe 'Encoding — barCharset emits stable UTF-8 codepoints' {
             ForEach-Object { $_.Value.filled }
 
         ($filledHexValues | Sort-Object -Unique).Count | Should -Be $filledHexValues.Count
+    }
+}
+
+Describe 'Diagnostic Mode — Format-DiagHex' {
+    It 'returns space-separated uppercase hex for ASCII input' {
+        Format-DiagHex 'AB' | Should -Be '41 42'
+    }
+
+    It 'returns correct UTF-8 bytes for U+2593 dark shade' {
+        # U+2593 (▓) → UTF-8: E2 96 93
+        Format-DiagHex ([char]0x2593) | Should -Be 'E2 96 93'
+    }
+
+    It 'returns correct UTF-8 bytes for U+2591 light shade' {
+        # U+2591 (░) → UTF-8: E2 96 91
+        Format-DiagHex ([char]0x2591) | Should -Be 'E2 96 91'
+    }
+
+    It 'returns correct UTF-8 bytes for braille fill U+28FF' {
+        # U+28FF (⣿) → UTF-8: E2 A3 BF
+        Format-DiagHex ([char]0x28FF) | Should -Be 'E2 A3 BF'
+    }
+
+    It 'returns correct UTF-8 bytes for braille empty U+28C9' {
+        # U+28C9 (⣉) → UTF-8: E2 A3 89
+        Format-DiagHex ([char]0x28C9) | Should -Be 'E2 A3 89'
+    }
+
+    It 'returns empty string for empty input' {
+        Format-DiagHex '' | Should -Be ''
+    }
+}
+
+Describe 'Diagnostic Mode — Format-DiagCodepoints' {
+    It 'returns (ASCII only) for purely ASCII input' {
+        Format-DiagCodepoints 'hello 42%' | Should -Be '(ASCII only)'
+    }
+
+    It 'returns (empty) for empty input' {
+        Format-DiagCodepoints '' | Should -Be '(empty)'
+    }
+
+    It 'lists U+2593 for dark shade character' {
+        Format-DiagCodepoints ([char]0x2593) | Should -Match 'U\+2593'
+    }
+
+    It 'lists U+28FF for braille fill character' {
+        Format-DiagCodepoints ([char]0x28FF) | Should -Match 'U\+28FF'
+    }
+
+    It 'strips ANSI escape sequences before listing codepoints' {
+        # ESC[32m wraps a block char; the ESC char itself must not appear as a codepoint
+        $ansiWrapped = "`e[32m$([char]0x2593)`e[0m"
+        $result = Format-DiagCodepoints $ansiWrapped
+        $result | Should -Match 'U\+2593'
+        $result | Should -Not -Match 'U\+001B'
+    }
+}
+
+Describe 'Diagnostic Mode — Write-StatuslineDiag is fully opt-in' {
+    BeforeAll {
+        $script:diagTestLogPath = Join-Path (Split-Path $PSScriptRoot -Parent) 'statusline-diag.log'
+    }
+
+    BeforeEach {
+        if (Test-Path $script:diagTestLogPath) { Remove-Item $script:diagTestLogPath -Force }
+    }
+
+    AfterEach {
+        if (Test-Path $script:diagTestLogPath) { Remove-Item $script:diagTestLogPath -Force }
+        $script:DiagMode = $false
+    }
+
+    It 'does not create log file when DiagMode is false' {
+        $script:DiagMode = $false
+        Write-StatuslineDiag 'TestSection' @('should not appear')
+        Test-Path $script:diagTestLogPath | Should -Be $false
+    }
+
+    It 'creates log file with section header and content when DiagMode is true' {
+        $script:DiagMode = $true
+        Write-StatuslineDiag 'TestSection' @('line-alpha', 'line-beta')
+        Test-Path $script:diagTestLogPath | Should -Be $true
+        $content = Get-Content $script:diagTestLogPath -Raw -Encoding UTF8
+        $content | Should -Match '\[TestSection\]'
+        $content | Should -Match 'line-alpha'
+        $content | Should -Match 'line-beta'
+    }
+
+    It 'Write-DiagHeader does not create log file when DiagMode is false' {
+        $script:DiagMode = $false
+        Write-DiagHeader
+        Test-Path $script:diagTestLogPath | Should -Be $false
+    }
+
+    It 'Write-DiagHeader creates separator block with timestamp when DiagMode is true' {
+        $script:DiagMode = $true
+        Write-DiagHeader
+        $content = Get-Content $script:diagTestLogPath -Raw -Encoding UTF8
+        $content | Should -Match 'DIAG \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}'
+    }
+
+    It 'Write-DiagFooter does not create log file when DiagMode is false' {
+        $script:DiagMode = $false
+        Write-DiagFooter
+        Test-Path $script:diagTestLogPath | Should -Be $false
+    }
+
+    It 'Write-DiagFooter appends END DIAG marker when DiagMode is true' {
+        $script:DiagMode = $true
+        Write-DiagFooter
+        $content = Get-Content $script:diagTestLogPath -Raw -Encoding UTF8
+        $content | Should -Match 'END DIAG'
+    }
+}
+
+Describe 'Diagnostic Mode — rendered output is identical with and without DiagMode' {
+    BeforeAll {
+        $script:diagTestLogPath2 = Join-Path (Split-Path $PSScriptRoot -Parent) 'statusline-diag.log'
+        # Script-level vars normally set by Invoke-Main; set defaults for direct function calls
+        $script:ThemesMap  = @{}
+        $script:ThemeFg    = $null
+        $script:ThemeBg    = $null
+        $script:KnownKeys  = $null
+        $script:LogNewFields = $false
+
+        $script:diagTestConfig = @{
+            lines = @(
+                @{
+                    mergeWithNext = $false
+                    fields = @(
+                        @{ type = 'field'; key = 'model.display_name'; fg = $null; bg = $null }
+                        @{ type = 'progress_bar'; key = 'context_window.used_percentage'; style = 'normal'; barCharset = 'braille'; fg = $null; bg = $null }
+                    )
+                }
+                @{
+                    mergeWithNext = $false
+                    fields = @(
+                        @{ type = 'field'; key = 'cost.total_cost_usd'; fg = $null; bg = $null }
+                    )
+                }
+            )
+        } | ConvertTo-Json -Depth 6 | ConvertFrom-Json
+
+        $script:diagTestData = @{
+            model          = @{ display_name = 'TestModel' }
+            context_window = @{ used_percentage = 42 }
+            cost           = @{ total_cost_usd = 0.0042 }
+        } | ConvertTo-Json | ConvertFrom-Json
+    }
+
+    AfterEach {
+        if (Test-Path $script:diagTestLogPath2) { Remove-Item $script:diagTestLogPath2 -Force }
+        $script:DiagMode = $false
+    }
+
+    It 'Format-Lines-Aligned produces byte-identical output with and without DiagMode' {
+        $script:DiagMode = $false
+        $outputOff = Format-Lines-Aligned $script:diagTestConfig.lines $script:diagTestData
+
+        $script:DiagMode = $true
+        $outputOn = Format-Lines-Aligned $script:diagTestConfig.lines $script:diagTestData
+        $script:DiagMode = $false
+
+        $outputOn | Should -Be $outputOff
     }
 }
 

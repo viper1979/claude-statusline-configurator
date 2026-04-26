@@ -2254,9 +2254,51 @@ function renderEditTabGeneral() {
     el.querySelectorAll('input[name="edit-thinking-format"]').forEach(radio => {
       radio.addEventListener('change', () => {
         _editDraft.format = radio.value;
+        wireThinkingCustomSymbols();
         renderPreview();
       });
     });
+    const curOpts = f.formatOptions || {};
+    const symBlock = document.createElement('div');
+    symBlock.id = 'edit-thinking-sym-block';
+    symBlock.style.cssText = 'margin-top:10px;padding-left:4px;';
+    const inputStyle = 'flex:1;min-width:0;padding:5px 8px;border-radius:4px;' +
+                       'border:1px solid var(--color-border);background:var(--color-surface-2);' +
+                       'color:var(--color-text);font-size:12px;';
+    const btnStyle   = 'padding:4px 7px;border-radius:4px;border:1px solid var(--color-border);' +
+                       'background:var(--color-surface-2);cursor:pointer;font-size:14px;line-height:1;' +
+                       'color:var(--color-text);flex-shrink:0;';
+    symBlock.innerHTML = `
+      <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:6px;">Custom-Symbole (optional — überschreibt 💭/○)</div>
+      <div style="margin-bottom:6px;">
+        <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:3px;">True-Symbol</div>
+        <div style="display:flex;gap:4px;align-items:center;">
+          <input id="edit-think-true-sym" type="text" maxlength="8"
+                 placeholder="💭"
+                 value="${escapeHtml(curOpts.trueSymbol || '')}"
+                 style="${inputStyle}">
+          <button type="button" title="Emoji-Picker öffnen"
+                  data-emoji-trigger="1"
+                  onclick="openEmojiPicker(this,'edit-think-true-sym')"
+                  style="${btnStyle}">😀</button>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:3px;">False-Symbol</div>
+        <div style="display:flex;gap:4px;align-items:center;">
+          <input id="edit-think-false-sym" type="text" maxlength="8"
+                 placeholder="○"
+                 value="${escapeHtml(curOpts.falseSymbol || '')}"
+                 style="${inputStyle}">
+          <button type="button" title="Emoji-Picker öffnen"
+                  data-emoji-trigger="1"
+                  onclick="openEmojiPicker(this,'edit-think-false-sym')"
+                  style="${btnStyle}">😀</button>
+        </div>
+      </div>
+    `;
+    el.appendChild(symBlock);
+    wireThinkingCustomSymbols();
   } else {
     // type === 'field' — key is read-only; path fields also show pathDepth option
     const isPathField   = PATH_KEYS.has(f.key);
@@ -2429,6 +2471,22 @@ function wireBoolCustomLabels() {
   }
   document.querySelectorAll('[name="edit-format"]').forEach(r => r.addEventListener('change', toggle));
   toggle();
+}
+
+// Wires show/hide of thinking custom-symbol inputs and live-preview updates.
+// Symbol block is hidden when format is 'raw' or 'short' (no symbol rendered).
+function wireThinkingCustomSymbols() {
+  const block = document.getElementById('edit-thinking-sym-block');
+  if (!block) return;
+  const checked = document.querySelector('[name="edit-thinking-format"]:checked');
+  const symbolFormats = ['symbol', 'icon+raw', 'icon+short'];
+  block.style.display = symbolFormats.includes(checked?.value) ? '' : 'none';
+  block.querySelectorAll('input[type="text"]').forEach(inp => {
+    if (!inp.dataset.wired) {
+      inp.dataset.wired = '1';
+      inp.addEventListener('input', renderPreview);
+    }
+  });
 }
 
 /**
@@ -2651,6 +2709,16 @@ function saveEditDialog() {
     }
   }
 
+  // Read thinking custom symbol values into draft
+  if (_editDraft.type === 'thinking_enabled') {
+    const trueSym  = document.getElementById('edit-think-true-sym')?.value.trim()  || '';
+    const falseSym = document.getElementById('edit-think-false-sym')?.value.trim() || '';
+    _editDraft.formatOptions = (trueSym || falseSym)
+      ? { ...(trueSym  ? { trueSymbol:  trueSym  } : {}),
+          ...(falseSym ? { falseSymbol: falseSym } : {}) }
+      : null;
+  }
+
   // Read Farben tab values into draft — only if the tab was actually rendered.
   // fgOverride/bgOverride are already up-to-date (set by activateColorOverride/deactivateColorOverride).
   // Capture the final picker values in case oninput did not fire (e.g. programmatic change).
@@ -2825,6 +2893,7 @@ function insertEmojiAtCursor(emoji) {
     const newPos = start + emoji.length;
     input.setSelectionRange(newPos, newPos);
     input.focus();
+    input.dispatchEvent(new Event('input'));
   }
   closeEmojiPicker();
 }
@@ -3025,10 +3094,13 @@ function renderFieldHtml(field, data, previewTheme = null, previewOverride = nul
   if (field.type === 'thinking_enabled') {
     const enabled = getNestedValue(data, 'thinking.enabled');
     if (enabled === undefined || enabled === null) return '';
-    const sym      = enabled ? '💭' : '○';
-    const sh       = enabled ? 'T' : '-';
-    const rawStr   = enabled ? 'true' : 'false';
-    const rendered = { raw: rawStr, short: sh, symbol: sym, 'icon+raw': `${sym} ${rawStr}`, 'icon+short': `${sym} ${sh}` }[field.format] ?? rawStr;
+    const opts       = field.formatOptions || {};
+    const trueSym    = (document.getElementById('edit-think-true-sym')?.value.trim())  || opts.trueSymbol  || '💭';
+    const falseSym   = (document.getElementById('edit-think-false-sym')?.value.trim()) || opts.falseSymbol || '○';
+    const sym        = enabled ? trueSym : falseSym;
+    const sh         = enabled ? 'T' : '-';
+    const rawStr     = enabled ? 'true' : 'false';
+    const rendered   = { raw: rawStr, short: sh, symbol: sym, 'icon+raw': `${sym} ${rawStr}`, 'icon+short': `${sym} ${sh}` }[field.format] ?? rawStr;
     return `<span style="${style}">${escapeHtml(rendered)}</span>`;
   }
 
