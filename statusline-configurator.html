@@ -406,6 +406,7 @@ const AVAILABLE_FIELDS = [
     { key: 'output_style.name',    label: 'Output Style' },
     { key: 'agent.name',           label: 'Agent Name' },
     { key: 'vim.mode',             label: 'Vim Mode' },
+    { key: 'fast_mode',            label: 'Fast Mode' },
   ]},
   { group: 'Worktree', items: [
     { key: 'worktree.name',            label: 'Name' },
@@ -415,8 +416,8 @@ const AVAILABLE_FIELDS = [
     { key: 'worktree.original_branch', label: 'Original Branch' },
   ]},
   { group: 'Session State', items: [
-    { key: 'effort',           label: 'Effort Level',     specialType: 'effort' },
-    { key: 'thinking_enabled', label: 'Thinking Enabled', specialType: 'thinking_enabled' },
+    { key: 'effort.level',     label: 'Effort Level',     specialType: 'effort' },
+    { key: 'thinking.enabled', label: 'Thinking Enabled', specialType: 'thinking_enabled' },
   ]},
 ];
 
@@ -474,6 +475,7 @@ const FIELD_TYPE_DEFAULTS = {
   'session_id':                              { dataType: 'string' },
   'agent.name':                              { dataType: 'string' },
   'vim.mode':                                { dataType: 'string' },
+  'fast_mode':                               { dataType: 'string' },
   // Worktree
   'worktree.name':                           { dataType: 'string' },
   'worktree.branch':                         { dataType: 'string' },
@@ -507,8 +509,9 @@ const SAMPLE_DATA = {
   vim: { mode: 'NORMAL' },
   agent: { name: '' },
   worktree: { name: 'my-feature', path: '/home/user/.claude/worktrees/my-feature', branch: 'worktree-my-feature', original_cwd: '/home/user/myproject', original_branch: 'main' },
-  effort:   { level: 'medium' },
-  thinking: { enabled: true },
+  effort:    { level: 'medium' },
+  thinking:  { enabled: true },
+  fast_mode: false,
 };
 
 // ─── Emoji list for the emoji picker (~250 emojis, curated for Windows Terminal compatibility) ────
