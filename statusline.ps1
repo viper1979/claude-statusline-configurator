@@ -100,11 +100,12 @@ function Get-DiagEnvInfo {
     $info['OS']           = if ($PSVersionTable.OS) { $PSVersionTable.OS } else { [System.Environment]::OSVersion.VersionString }
     $info['HostName']     = $Host.Name
     $info['HostVersion']  = $Host.Version
-    $info['WindowWidth']  = [Console]::WindowWidth
-    $info['BufferWidth']  = [Console]::BufferWidth
-    $info['InputCP']      = [Console]::InputEncoding.CodePage
-    $info['OutputCP']     = [Console]::OutputEncoding.CodePage
-    $info['OutputEncVar'] = $OutputEncoding.CodePage
+    # Console handle properties throw IOException when there is no real console (e.g. piped by Claude Code)
+    $info['WindowWidth']  = try { [Console]::WindowWidth }             catch { '(no console)' }
+    $info['BufferWidth']  = try { [Console]::BufferWidth }             catch { '(no console)' }
+    $info['InputCP']      = try { [Console]::InputEncoding.CodePage }  catch { '(unavailable)' }
+    $info['OutputCP']     = try { [Console]::OutputEncoding.CodePage } catch { '(unavailable)' }
+    $info['OutputEncVar'] = try { $OutputEncoding.CodePage }           catch { '(unavailable)' }
     $info['WT_SESSION']   = if ($env:WT_SESSION)   { $env:WT_SESSION }   else { '(not set)' }
     $info['TERM_PROGRAM'] = if ($env:TERM_PROGRAM)  { $env:TERM_PROGRAM }  else { '(not set)' }
     $info['TERM']         = if ($env:TERM)          { $env:TERM }          else { '(not set)' }
@@ -423,9 +424,12 @@ function Format-Duration {
     One of: string | currency | bool | number | unix_timestamp | duration_ms
 .PARAMETER Format
     Format variant string matching the data type (e.g. 'k', 'short', 'checkmark').
-    For unix_timestamp: value is treated as future epoch; past timestamps display as '0h 0m'.
+    For unix_timestamp countdown formats: value is treated as future epoch; past timestamps display as '0h 0m'.
+    For unix_timestamp local-time formats (local_time, local_datetime, local_short, custom): converts epoch
+    to local timezone and formats it. 'custom' reads pattern from FormatOptions.customPattern.
 .PARAMETER FormatOptions
     PSCustomObject with extra options. Used for bool custom format: trueLabel, falseLabel.
+    For unix_timestamp custom format: customPattern (.NET DateTime format string).
 .OUTPUTS
     Formatted string ready for display.
 #>
@@ -449,6 +453,21 @@ function Format-FieldValue {
 
     switch ($DataType) {
         'unix_timestamp' {
+            if ($Format -in @('local_time', 'local_datetime', 'local_short', 'custom')) {
+                $local = [DateTimeOffset]::FromUnixTimeSeconds([long]$Value).ToLocalTime().DateTime
+                $pattern = switch ($Format) {
+                    'local_time'     { 'HH:mm' }
+                    'local_datetime' { 'dd.MM.yyyy HH:mm' }
+                    'local_short'    { 'dd.MM. HH:mm' }
+                    'custom'         {
+                        if ($null -ne $FormatOptions -and $FormatOptions.customPattern) { $FormatOptions.customPattern }
+                        else { '' }
+                    }
+                }
+                if ([string]::IsNullOrEmpty($pattern)) { return "$Value" }
+                # CurrentCulture ensures MMM/MMMM render in the user's language (e.g. "Jan"/"Januar" on de-DE)
+                return $local.ToString($pattern, [System.Globalization.CultureInfo]::CurrentCulture)
+            }
             if ($Format -eq 'raw') { return "$Value" }
             $remaining    = [DateTimeOffset]::FromUnixTimeSeconds([long]$Value) - [DateTimeOffset]::UtcNow
             $totalSeconds = [long]$remaining.TotalSeconds
@@ -1076,34 +1095,39 @@ function Invoke-Main {
     }
 
     # ─── Diagnostic: header + environment + config + input snapshot ───────────
+    # Wrapped in try/catch: diagnostic failures must never abort the statusline render.
     if ($script:DiagMode) {
-        Write-DiagHeader
+        try {
+            Write-DiagHeader
 
-        $envInfo  = Get-DiagEnvInfo
-        $envLines = @($envInfo.GetEnumerator() | ForEach-Object { "$($_.Key) = $($_.Value)" })
-        Write-StatuslineDiag 'Environment' $envLines
+            $envInfo  = Get-DiagEnvInfo
+            $envLines = @($envInfo.GetEnumerator() | ForEach-Object { "$($_.Key) = $($_.Value)" })
+            Write-StatuslineDiag 'Environment' $envLines
 
-        $cfgHash = try {
-            $hashBytes = [System.Security.Cryptography.SHA256]::Create().ComputeHash(
-                [System.Text.Encoding]::UTF8.GetBytes((Get-Content -Path $ConfigPath -Raw -Encoding UTF8))
+            $cfgHash = try {
+                $hashBytes = [System.Security.Cryptography.SHA256]::Create().ComputeHash(
+                    [System.Text.Encoding]::UTF8.GetBytes((Get-Content -Path $ConfigPath -Raw -Encoding UTF8))
+                )
+                ($hashBytes | ForEach-Object { $_.ToString('X2') }) -join ''
+            } catch { '(hash failed)' }
+            Write-StatuslineDiag 'Config-Snapshot' @(
+                "Path          = $ConfigPath"
+                "SHA256        = $cfgHash"
+                "barCharset    = $($config.barCharset)"
+                "progressStyle = $($config.progressStyle)"
+                "separator     = $($config.separator)"
+                "colAlign      = $($config.columnAlignmentEnabled)"
+                "activeTheme   = $($config.activeTheme)"
             )
-            ($hashBytes | ForEach-Object { $_.ToString('X2') }) -join ''
-        } catch { '(hash failed)' }
-        Write-StatuslineDiag 'Config-Snapshot' @(
-            "Path          = $ConfigPath"
-            "SHA256        = $cfgHash"
-            "barCharset    = $($config.barCharset)"
-            "progressStyle = $($config.progressStyle)"
-            "separator     = $($config.separator)"
-            "colAlign      = $($config.columnAlignmentEnabled)"
-            "activeTheme   = $($config.activeTheme)"
-        )
 
-        # Mask filesystem paths that could reveal the user's folder structure
-        $maskedJson = $InputJson `
-            -replace '"cwd"\s*:\s*"[^"]*"',             '"cwd": "(masked)"' `
-            -replace '"transcript_path"\s*:\s*"[^"]*"', '"transcript_path": "(masked)"'
-        Write-StatuslineDiag 'Input-JSON' @($maskedJson)
+            # Mask filesystem paths that could reveal the user's folder structure
+            $maskedJson = $InputJson `
+                -replace '"cwd"\s*:\s*"[^"]*"',             '"cwd": "(masked)"' `
+                -replace '"transcript_path"\s*:\s*"[^"]*"', '"transcript_path": "(masked)"'
+            Write-StatuslineDiag 'Input-JSON' @($maskedJson)
+        } catch {
+            Write-StatuslineDiag 'Diag-Failure' @("$_")
+        }
     }
     # ─────────────────────────────────────────────────────────────────────────
 
@@ -1197,7 +1221,7 @@ if ($MyInvocation.InvocationName -ne '.') {
     $result = try {
         Invoke-Main
     } catch {
-        Write-StatuslineError "Unexpected error: $_"
+        Write-StatuslineError ("Unexpected error: {0} ({1}) at line {2}" -f $_.Exception.Message, $_.Exception.GetType().Name, $_.InvocationInfo.ScriptLineNumber)
     }
     if ($result) {
         if ($script:DiagMode) {

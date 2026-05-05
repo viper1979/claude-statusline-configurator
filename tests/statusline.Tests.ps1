@@ -498,6 +498,38 @@ Describe 'Format-FieldValue' {
             Should -Be '1738857600'
     }
 
+    It 'formats unix_timestamp local_time as HH:mm pattern' {
+        $ts = [DateTimeOffset]::UtcNow.AddHours(1).ToUnixTimeSeconds()
+        $result = Format-FieldValue -Value $ts -DataType 'unix_timestamp' -Format 'local_time' -FormatOptions $null
+        $result | Should -Match '^\d{2}:\d{2}$'
+    }
+
+    It 'formats unix_timestamp local_datetime as dd.MM.yyyy HH:mm pattern' {
+        $ts = [DateTimeOffset]::UtcNow.AddHours(1).ToUnixTimeSeconds()
+        $result = Format-FieldValue -Value $ts -DataType 'unix_timestamp' -Format 'local_datetime' -FormatOptions $null
+        $result | Should -Match '^\d{2}\.\d{2}\.\d{4} \d{2}:\d{2}$'
+    }
+
+    It 'formats unix_timestamp local_short as dd.MM. HH:mm pattern' {
+        $ts = [DateTimeOffset]::UtcNow.AddHours(1).ToUnixTimeSeconds()
+        $result = Format-FieldValue -Value $ts -DataType 'unix_timestamp' -Format 'local_short' -FormatOptions $null
+        $result | Should -Match '^\d{2}\.\d{2}\. \d{2}:\d{2}$'
+    }
+
+    It 'formats unix_timestamp custom with yyyy-MM-dd pattern' {
+        $ts = [DateTimeOffset]::UtcNow.AddHours(1).ToUnixTimeSeconds()
+        $opts = [PSCustomObject]@{ customPattern = 'yyyy-MM-dd' }
+        $result = Format-FieldValue -Value $ts -DataType 'unix_timestamp' -Format 'custom' -FormatOptions $opts
+        $result | Should -Match '^\d{4}-\d{2}-\d{2}$'
+    }
+
+    It 'formats unix_timestamp custom falls back to raw value when pattern is empty' {
+        $ts = 1738857600
+        $opts = [PSCustomObject]@{ customPattern = '' }
+        Format-FieldValue -Value $ts -DataType 'unix_timestamp' -Format 'custom' -FormatOptions $opts |
+            Should -Be '1738857600'
+    }
+
     It 'formats unix_timestamp hours format as a time string matching pattern' {
         # Use a timestamp 2 hours and 5 minutes in the future
         $futureTs = [DateTimeOffset]::UtcNow.AddHours(2).AddMinutes(5).ToUnixTimeSeconds()
@@ -2077,6 +2109,94 @@ Describe 'Encoding — new_fields_indicator emits UTF-8 bullet' {
             # Assert: the raw output must contain the UTF-8 byte sequence for ●
             $hex = ($rawBytes | ForEach-Object { '{0:X2}' -f $_ }) -join ''
             $hex | Should -Match 'E2978F'
+        }
+        finally {
+            Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+Describe 'Diagnostic Mode — Get-DiagEnvInfo is safe when no console handle exists' {
+    # Subprocess-level: spawn pwsh with redirected stdio (no real console), dot-source the
+    # script, call Get-DiagEnvInfo and emit the WindowWidth value.
+    # Guards against IOException "Das Handle ist ungültig." propagating out of the function.
+
+    It 'GetDiagEnvInfo_WhenNoConsole_ReturnsPlaceholderInsteadOfThrowing' {
+        # Arrange
+        $srcScript = Join-Path $PSScriptRoot '..' 'statusline.ps1'
+        $probe = @'
+. "{0}"
+$info = Get-DiagEnvInfo
+Write-Output $info['WindowWidth']
+'@ -f $srcScript.Replace('\', '\\')
+
+        $psi = [System.Diagnostics.ProcessStartInfo]::new()
+        $psi.FileName = 'pwsh'
+        $psi.ArgumentList.Add('-NoProfile')
+        $psi.ArgumentList.Add('-Command')
+        $psi.ArgumentList.Add($probe)
+        $psi.RedirectStandardInput  = $true
+        $psi.RedirectStandardOutput = $true
+        $psi.RedirectStandardError  = $true
+        $psi.UseShellExecute        = $false
+
+        # Act
+        $proc = [System.Diagnostics.Process]::Start($psi)
+        $proc.StandardInput.Close()
+        $stdout = $proc.StandardOutput.ReadToEnd()
+        $proc.WaitForExit()
+        $exitCode = $proc.ExitCode
+
+        # Assert: process must exit cleanly; WindowWidth must be a number or the placeholder
+        $exitCode | Should -Be 0
+        $value = $stdout.Trim()
+        $value | Should -Not -BeNullOrEmpty
+        # Acceptable: a numeric width (console was somehow available) or the safe placeholder
+        ($value -match '^\d+$' -or $value -eq '(no console)') | Should -Be $true
+    }
+}
+
+Describe 'Diagnostic Mode — DiagMode=1 does not abort statusline render in pipe mode' {
+    # End-to-end subprocess test: CCSTATUSLINE_DIAG=1 must never replace the rendered
+    # statusline with an error message when the script is invoked with redirected stdio.
+
+    It 'InvokeMain_WithDiagModeAndRedirectedStdio_OutputDoesNotContainErrorMarker' {
+        # Arrange
+        $tempDir = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), [Guid]::NewGuid().ToString())
+        $null = New-Item -ItemType Directory -Path $tempDir -Force
+        try {
+            $srcScript  = Join-Path $PSScriptRoot '..' 'statusline.ps1'
+            $tempScript = Join-Path $tempDir 'statusline.ps1'
+            $tempConfig = Join-Path $tempDir 'statusline-config.json'
+            Copy-Item -Path $srcScript -Destination $tempScript
+
+            $configObj  = @{ lines = @(@{ fields = @(@{ type = 'field'; key = 'model.display_name' }) }) }
+            $configJson = $configObj | ConvertTo-Json -Depth 5 -Compress
+            [System.IO.File]::WriteAllText($tempConfig, $configJson, [System.Text.UTF8Encoding]::new($false))
+
+            $inputJson = '{"model":{"display_name":"TestModel"}}'
+
+            $psi = [System.Diagnostics.ProcessStartInfo]::new()
+            $psi.FileName = 'pwsh'
+            $psi.ArgumentList.Add('-NoProfile')
+            $psi.ArgumentList.Add('-File')
+            $psi.ArgumentList.Add($tempScript)
+            $psi.EnvironmentVariables['CCSTATUSLINE_DIAG'] = '1'
+            $psi.RedirectStandardInput  = $true
+            $psi.RedirectStandardOutput = $true
+            $psi.RedirectStandardError  = $true
+            $psi.UseShellExecute        = $false
+
+            # Act
+            $proc = [System.Diagnostics.Process]::Start($psi)
+            $proc.StandardInput.Write($inputJson)
+            $proc.StandardInput.Close()
+            $stdout = $proc.StandardOutput.ReadToEnd()
+            $proc.WaitForExit()
+
+            # Assert: no error indicator in output; TestModel label must appear
+            $stdout | Should -Not -Match ([regex]::Escape('[❌ statusline]'))
+            $stdout | Should -Match 'TestModel'
         }
         finally {
             Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
