@@ -1270,6 +1270,14 @@ Describe 'Get-VisibleWidth' {
     It 'returns 0 for ANSI-only string' {
         Get-VisibleWidth "$([char]27)[0m" | Should -Be 0
     }
+
+    It 'uses \x1b regex escape (PS 5.1 compat), not the `e escape (PS 7+ only)' {
+        # `e is only a valid escape in PowerShell 6+; on Windows PowerShell 5.1 it yields
+        # the letter e, so the regex would not match ANSI codes and visible width would be wrong.
+        $src = Get-Content (Join-Path $PSScriptRoot '..\statusline.ps1') -Raw
+        $src | Should -Match '\\x1b\\\['
+        $src | Should -Not -Match '"`e\\\['
+    }
 }
 
 Describe 'Build-Groups' {

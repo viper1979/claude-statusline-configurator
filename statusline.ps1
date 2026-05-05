@@ -65,7 +65,7 @@ function Format-DiagHex {
 function Format-DiagCodepoints {
     param([string]$Text)
     if ([string]::IsNullOrEmpty($Text)) { return '(empty)' }
-    $clean = $Text -replace "`e\[[0-9;]*m", ''
+    $clean = $Text -replace "\x1b\[[0-9;]*m", ''
     $parts = [System.Collections.Generic.List[string]]::new()
     $i = 0
     while ($i -lt $clean.Length) {
@@ -751,7 +751,7 @@ function Format-Field {
 #>
 function Get-VisibleWidth {
     param([string]$Text)
-    return ($Text -replace "`e\[[0-9;]*m", '').Length
+    return ($Text -replace "\x1b\[[0-9;]*m", '').Length
 }
 
 <#
@@ -870,7 +870,7 @@ function Format-Line-Group {
             $padding = if (-not $isLast) { $maxWidths[$g] - $visW } else { 0 }
             $lineParts.Add($text + (' ' * [math]::Max(0, $padding)))
             if ($script:DiagMode) {
-                $clean = $text -replace "`e\[[0-9;]*m", ''
+                $clean = $text -replace "\x1b\[[0-9;]*m", ''
                 Write-StatuslineDiag 'Group-Trace' @(
                     "g=$g  visW=$visW  maxW=$($maxWidths[$g])  pad=$padding"
                     "strip: $clean"
@@ -1229,7 +1229,7 @@ if ($MyInvocation.InvocationName -ne '.') {
             $traceLines  = [System.Collections.Generic.List[string]]::new()
             for ($li = 0; $li -lt $resultLines.Count; $li++) {
                 $raw   = $resultLines[$li]
-                $clean = $raw -replace "`e\[[0-9;]*m", ''
+                $clean = $raw -replace "\x1b\[[0-9;]*m", ''
                 $traceLines.Add("line[$li]: rawLen=$($raw.Length)  visW=$($clean.Length)")
                 $traceLines.Add("  hex: $(Format-DiagHex $clean)")
                 $traceLines.Add("  cpt: $(Format-DiagCodepoints $clean)")
