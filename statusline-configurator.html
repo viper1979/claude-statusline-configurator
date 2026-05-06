@@ -463,7 +463,9 @@ const FIELD_TYPE_DEFAULTS = {
   'context_window.remain_tokens':            { dataType: 'number',         format: 'auto' },
   // Rate Limits
   'rate_limits.five_hour.used_percentage':   { dataType: 'number',         format: 'raw' },
+  'rate_limits.five_hour.resets_at':         { dataType: 'unix_timestamp', format: 'short' },
   'rate_limits.seven_day.used_percentage':   { dataType: 'number',         format: 'raw' },
+  'rate_limits.seven_day.resets_at':         { dataType: 'unix_timestamp', format: 'short' },
   // Workspace / Session
   'workspace.current_dir':                   { dataType: 'string' },
   'workspace.project_dir':                   { dataType: 'string' },
@@ -2269,11 +2271,11 @@ function renderEditTabGeneral() {
                        'background:var(--color-surface-2);cursor:pointer;font-size:14px;line-height:1;' +
                        'color:var(--color-text);flex-shrink:0;';
     symBlock.innerHTML = `
-      <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:6px;">Custom-Symbole (optional — überschreibt 💭/○)</div>
+      <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:6px;">Custom-Symbol oder Text (optional — überschreibt 💭/○)</div>
       <div style="margin-bottom:6px;">
         <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:3px;">True-Symbol</div>
         <div style="display:flex;gap:4px;align-items:center;">
-          <input id="edit-think-true-sym" type="text" maxlength="8"
+          <input id="edit-think-true-sym" type="text" maxlength="16"
                  placeholder="💭"
                  value="${escapeHtml(curOpts.trueSymbol || '')}"
                  style="${inputStyle}">
@@ -2286,7 +2288,7 @@ function renderEditTabGeneral() {
       <div>
         <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:3px;">False-Symbol</div>
         <div style="display:flex;gap:4px;align-items:center;">
-          <input id="edit-think-false-sym" type="text" maxlength="8"
+          <input id="edit-think-false-sym" type="text" maxlength="16"
                  placeholder="○"
                  value="${escapeHtml(curOpts.falseSymbol || '')}"
                  style="${inputStyle}">
@@ -2361,7 +2363,7 @@ const DATATYPE_FORMATS = {
   currency:       [],
   bool:           [['true_false','true / false'],['yes_no','yes / no'],['checkmark','✓ / ✗'],['custom','Benutzerdefiniert']],
   number:         [['raw','Rohwert (12345678)'],['auto','Auto (456 / 33k / 939m / 12b)']],
-  unix_timestamp: [['hours','Stunden (75h 32m)'],['short','Kurz (1d 4h 32m)'],['long','Lang (1d 4hr 32min)'],['days_hours','Tage + Stunden (1d 23h)'],['days_hours_pad','Tage + Stunden mit 0d (0d 23h)'],['raw','Rohwert']],
+  unix_timestamp: [['hours','Stunden (75h 32m)'],['short','Kurz (1d 4h 32m)'],['long','Lang (1d 4hr 32min)'],['days_hours','Tage + Stunden (1d 23h)'],['days_hours_pad','Tage + Stunden mit 0d (0d 23h)'],['raw','Rohwert'],['local_time','Lokale Uhrzeit (14:32)'],['local_datetime','Lokales Datum + Uhrzeit (29.04.2026 14:32)'],['local_short','Lokal kurz (29.04. 14:32)'],['custom','Benutzerdefiniertes Pattern (.NET Style)']],
   duration_ms:    [['hours','Stunden (75h 32m)'],['short','Kurz (1d 4h 32m)'],['long','Lang (1d 4hr 32min)']],
 };
 
@@ -2408,9 +2410,11 @@ function renderEditTabDatatype() {
     document.getElementById('edit-format-section').innerHTML =
       renderFormatOptions(newFormats, '', newType);
     if (newType === 'bool') wireBoolCustomLabels();
+    if (newType === 'unix_timestamp') wireUnixTimestampCustomPattern();
   });
 
   if (currentType === 'bool') wireBoolCustomLabels();
+  if (currentType === 'unix_timestamp') wireUnixTimestampCustomPattern();
 }
 
 // Renders the format radio-button options for a given data type.
@@ -2452,6 +2456,21 @@ function renderFormatOptions(formats, currentFormat, dataType) {
                       color:var(--color-text);font-size:12px;">
       </div>
     </div>
+  ` : dataType === 'unix_timestamp' ? `
+    <div id="edit-custom-pattern" style="display:none;margin-top:8px;padding-left:20px;">
+      <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:3px;">Format-Pattern</div>
+      <input id="edit-pattern-input" type="text"
+             value="${escapeHtml(_editDraft?.formatOptions?.customPattern || '')}"
+             placeholder="z.B. dd.MM.yyyy HH:mm:ss"
+             style="width:100%;box-sizing:border-box;padding:5px 8px;border-radius:4px;
+                    border:1px solid var(--color-border);background:var(--color-surface-2);
+                    color:var(--color-text);font-size:12px;">
+      <div style="font-size:10px;color:var(--color-text-muted);margin-top:4px;">
+        Tokens: <code>yyyy yy MMMM MMM MM M dd d HH H mm m ss s</code><br>
+        <code>MMM</code> = Monatsname kurz (Jan) · <code>MMMM</code> = lang (Januar)<br>
+        Literal in Hochkommas: <code>'T'</code> → T
+      </div>
+    </div>
   ` : '';
 
   return `
@@ -2471,6 +2490,27 @@ function wireBoolCustomLabels() {
   }
   document.querySelectorAll('[name="edit-format"]').forEach(r => r.addEventListener('change', toggle));
   toggle();
+}
+
+// Wires show/hide of the unix_timestamp custom-pattern input and binds it to _editDraft.
+// Must be called AFTER innerHTML is set.
+function wireUnixTimestampCustomPattern() {
+  function toggle() {
+    const checked = document.querySelector('[name="edit-format"]:checked');
+    const sec = document.getElementById('edit-custom-pattern');
+    if (sec) sec.style.display = checked?.value === 'custom' ? '' : 'none';
+  }
+  document.querySelectorAll('[name="edit-format"]').forEach(r => r.addEventListener('change', toggle));
+  toggle();
+  const inp = document.getElementById('edit-pattern-input');
+  if (inp && !inp.dataset.wired) {
+    inp.dataset.wired = '1';
+    inp.addEventListener('input', () => {
+      if (!_editDraft.formatOptions) _editDraft.formatOptions = {};
+      _editDraft.formatOptions.customPattern = inp.value;
+      renderPreview();
+    });
+  }
 }
 
 // Wires show/hide of thinking custom-symbol inputs and live-preview updates.
@@ -2698,6 +2738,10 @@ function saveEditDialog() {
       _editDraft.formatOptions = {
         trueLabel:  document.getElementById('edit-true-label')?.value  || '',
         falseLabel: document.getElementById('edit-false-label')?.value || '',
+      };
+    } else if (_editDraft.dataType === 'unix_timestamp' && _editDraft.format === 'custom') {
+      _editDraft.formatOptions = {
+        customPattern: document.getElementById('edit-pattern-input')?.value || '',
       };
     } else {
       _editDraft.formatOptions = null;
@@ -2975,6 +3019,48 @@ function makeProgressBar(value, style, fg, brackets = true, charset = 'block', t
 }
 
 /**
+ * Formats a JS Date using a subset of .NET custom DateTime format tokens.
+ * Supported tokens: yyyy, yy, MM, M, dd, d, HH, H, mm, m, ss, s
+ * Literal text can be escaped with single quotes: 'T' → T
+ * Non-token, non-alpha characters pass through as-is.
+ * @param {Date}   date    - JS Date object (local timezone)
+ * @param {string} pattern - .NET-style format pattern
+ * @returns {string}
+ */
+function formatDotNetPattern(date, pattern) {
+  if (!pattern) return '';
+  const pad2 = n => String(n).padStart(2, '0');
+  const yr   = date.getFullYear();
+  const mo   = date.getMonth() + 1;
+  const dy   = date.getDate();
+  const hr   = date.getHours();
+  const mn   = date.getMinutes();
+  const sc   = date.getSeconds();
+  // MMMM/MMM use the browser locale so month names appear in the user's language
+  const tokens = {
+    yyyy: String(yr),
+    yy:   String(yr).slice(-2),
+    MMMM: date.toLocaleString(undefined, { month: 'long' }),
+    MMM:  date.toLocaleString(undefined, { month: 'short' }),
+    MM:   pad2(mo),
+    M:    String(mo),
+    dd:   pad2(dy),
+    d:    String(dy),
+    HH:   pad2(hr),
+    H:    String(hr),
+    mm:   pad2(mn),
+    m:    String(mn),
+    ss:   pad2(sc),
+    s:    String(sc),
+  };
+  // Regex matches quoted literals first, then longest-token-first to avoid MMMM/MMM/MM/M collisions
+  return pattern.replace(/'[^']*'|yyyy|yy|MMMM|MMM|MM|M|dd|d|HH|H|mm|m|ss|s/g, match => {
+    if (match.startsWith("'")) return match.slice(1, -1); // strip surrounding quotes
+    return tokens[match] ?? match;
+  });
+}
+
+/**
  * Formats a raw value according to dataType/format/formatOptions — mirrors PS Format-FieldValue.
  * @param {*}      value         - raw value from sample data
  * @param {string} dataType      - 'string'|'currency'|'number'|'bool'|'duration_ms'|'unix_timestamp'
@@ -3013,6 +3099,16 @@ function formatFieldValue(value, dataType, format, formatOptions) {
       }
     }
     case 'unix_timestamp': {
+      if (['local_time', 'local_datetime', 'local_short', 'custom'].includes(format)) {
+        const date = new Date(Number(value) * 1000);
+        const patternMap = {
+          local_time:     'HH:mm',
+          local_datetime: 'dd.MM.yyyy HH:mm',
+          local_short:    'dd.MM. HH:mm',
+        };
+        const pattern = patternMap[format] ?? (formatOptions?.customPattern || '');
+        return pattern ? formatDotNetPattern(date, pattern) : String(value);
+      }
       const now        = Math.floor(Date.now() / 1000);
       const diff       = Math.max(0, Number(value) - now);
       const totalHours = Math.floor(diff / 3600);
