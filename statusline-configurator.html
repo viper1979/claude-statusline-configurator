@@ -1377,6 +1377,25 @@ function toggleLineMergeNext(lineId) {
 
 // ─── Drag & Drop (Sortable.js) ────────────────────────────────────────────
 
+/**
+ * Returns the correct insertion index within line.fields for a SortableJS drop event.
+ * evt.newIndex counts ALL direct children of the drop-zone, including non-draggable
+ * <span class="chip-connector"> elements. Counting only .field-chip siblings before
+ * evt.item gives the true index into the data array.
+ * @param {Sortable.SortableEvent} evt
+ * @returns {number}
+ */
+function dropIndexFromEvent(evt) {
+  const children = [...evt.to.children];
+  const itemIdx = children.indexOf(evt.item);
+  if (itemIdx < 0) return evt.newIndex; // defensive fallback
+  let insertIdx = 0;
+  for (let i = 0; i < itemIdx; i++) {
+    if (children[i].classList && children[i].classList.contains('field-chip')) insertIdx++;
+  }
+  return insertIdx;
+}
+
 function initSortable() {
   // ── Sortable for line reordering ──
   const linesContainer = document.getElementById('lines-container');
@@ -1461,6 +1480,9 @@ function initSortable() {
         }
       },
       onAdd(evt) {
+        // Compute drop index BEFORE evt.item.remove() — dropIndexFromEvent needs
+        // evt.item's DOM position to count only .field-chip siblings before it.
+        const dropIdx            = dropIndexFromEvent(evt);
         const panelFieldType     = evt.item?.dataset?.fieldType;
         const panelCustomFieldId = evt.item?.dataset?.customFieldId;
         const panelFieldKey      = evt.item?.dataset?.fieldKey;
@@ -1507,7 +1529,7 @@ function initSortable() {
             }
             const targetLine = state.lines.find(l => l.id === lineId);
             if (!targetLine) { clearSelection(); clearDragState(); return; }
-            const safeIndex = Math.min(evt.newIndex, targetLine.fields.length);
+            const safeIndex = Math.min(dropIdx, targetLine.fields.length);
             targetLine.fields.splice(safeIndex, 0, ..._draggedFields);
             // Last chip in moved block should not carry a dangling merge flag
             applyMergeEdgeFix(_draggedFields);
@@ -1528,7 +1550,7 @@ function initSortable() {
         }
         const line = state.lines.find(l => l.id === lineId);
         if (!line) return;
-        const safeIndex = Math.min(evt.newIndex, line.fields.length);
+        const safeIndex = Math.min(dropIdx, line.fields.length);
         line.fields.splice(safeIndex, 0, newField);
         render();
       },
