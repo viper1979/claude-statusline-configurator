@@ -274,6 +274,44 @@
               <input type="checkbox" id="toggle-column-alignment" onchange="toggleColumnAlignment(this.checked)" checked>
               <span>Spaltenausrichtung aktivieren</span>
             </label>
+            <div style="margin-top:6px;">
+              <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;">
+                <input type="checkbox" id="toggle-powerline" onchange="togglePowerline(this.checked)">
+                <span>Powerline-Stil aktivieren</span>
+              </label>
+            </div>
+            <div id="powerline-options" style="display:none;margin-top:10px;padding:10px;background:var(--color-surface-2,#1a1a2e);border-radius:6px;border:1px solid var(--color-border);">
+              <div style="font-size:10px;font-weight:700;color:var(--color-text-muted);margin-bottom:10px;letter-spacing:.06em;text-transform:uppercase;">Powerline-Optionen</div>
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                <label style="font-size:12px;min-width:90px;">Separator</label>
+                <select id="pl-separator" onchange="setPowerlineSeparator(this.value)"
+                        style="font-size:12px;padding:3px 6px;border-radius:4px;border:1px solid var(--color-border);background:var(--color-bg);color:var(--color-text);flex:1;">
+                  <option value="solid">Solid &#xE0B0;</option>
+                  <option value="thin">Thin &#xE0B1;</option>
+                  <option value="slant">Slant &#xE0B8;</option>
+                  <option value="rounded">Rounded &#xE0B4;</option>
+                  <option value="custom">Custom …</option>
+                </select>
+                <span id="pl-sep-preview" style="font-size:20px;width:28px;text-align:center;font-family:'MesloLGS NF','Noto Color Emoji',monospace;"></span>
+              </div>
+              <div id="pl-custom-row" style="display:none;align-items:center;gap:8px;margin-bottom:8px;">
+                <label style="font-size:12px;min-width:90px;">Codepoint</label>
+                <input type="text" id="pl-custom-glyph" placeholder=" oder direktes Zeichen"
+                       oninput="setPowerlineCustomGlyph(this.value)"
+                       style="font-size:12px;padding:3px 6px;border-radius:4px;border:1px solid var(--color-border);background:var(--color-bg);color:var(--color-text);flex:1;">
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <label style="font-size:12px;min-width:90px;">
+                  Segment-BG <span style="color:#f87171;font-size:10px;">Pflicht</span>
+                </label>
+                <input type="color" id="pl-default-bg-picker" value="#444444"
+                       oninput="onPlBgPickerInput(this.value)"
+                       style="width:32px;height:24px;border:1px solid var(--color-border);border-radius:4px;padding:0;cursor:pointer;">
+                <input type="text" id="pl-default-bg-text" value="#444444" maxlength="7"
+                       oninput="onPlBgTextInput(this.value)"
+                       style="font-size:12px;font-family:monospace;width:76px;padding:3px 6px;border-radius:4px;border:1px solid var(--color-border);background:var(--color-bg);color:var(--color-text);">
+              </div>
+            </div>
           </div>
           <div id="lines-container"></div>
           <button class="btn" id="btn-add-line" onclick="addLine()" style="margin-top:8px;">+ Zeile hinzufügen</button>
@@ -381,9 +419,23 @@ const AVAILABLE_FIELDS = [
     { key: 'context_window.current_usage.cache_creation_input_tokens', label: 'Cache Creation Tokens' },
     { key: 'context_window.current_usage.cache_read_input_tokens',     label: 'Cache Read Tokens' },
     { key: 'exceeds_200k_tokens',                                      label: 'Exceeds 200k Tokens' },
-    { key: 'context_window.cache_efficiency', label: 'Cache Efficiency %' },
+    { key: 'context_window.cache_efficiency', label: 'Cache Efficiency % (deprecated)' },
     { key: 'context_window.used_tokens',      label: 'Used Tokens' },
     { key: 'context_window.remain_tokens',    label: 'Remaining Tokens' },
+  ]},
+  { group: 'Prompt Cache', items: [
+    { key: 'prompt_cache.warm',                   label: 'Warm' },
+    { key: 'prompt_cache.caching_observed',       label: 'Caching Observed' },
+    { key: 'prompt_cache.ttl',                    label: 'TTL' },
+    { key: 'prompt_cache.expires_at',             label: 'Expires At' },
+    { key: 'prompt_cache.requests',               label: 'Requests' },
+    { key: 'prompt_cache.misses',                 label: 'Misses' },
+    { key: 'prompt_cache.expected_rebuilds',      label: 'Expected Rebuilds' },
+    { key: 'prompt_cache.hit_ratio',              label: 'Cache Hit Ratio' },
+    { key: 'prompt_cache.cache_write_tokens',     label: 'Cache Write Tokens' },
+    { key: 'prompt_cache.miss_recache_tokens',    label: 'Miss Recache Tokens' },
+    { key: 'prompt_cache.last_miss_at',           label: 'Last Miss At' },
+    { key: 'prompt_cache.recache_tokens_if_cold', label: 'Recache If Cold' },
   ]},
   { group: 'Rate Limits', items: [
     { key: 'rate_limits.five_hour.used_percentage', label: '5h Used %' },
@@ -398,11 +450,13 @@ const AVAILABLE_FIELDS = [
     { key: 'workspace.git_worktree', label: 'Git Worktree' },
     { key: 'cwd',                    label: 'CWD' },
     { key: 'transcript_path',        label: 'Transcript Path' },
+    { key: 'scratchpad_dir',         label: 'Scratchpad Dir' },
   ]},
   { group: 'Session', items: [
     { key: 'session_name',         label: 'Session Name' },
     { key: 'version',              label: 'Version' },
     { key: 'session_id',           label: 'Session ID' },
+    { key: 'prompt_id',            label: 'Prompt ID' },
     { key: 'output_style.name',    label: 'Output Style' },
     { key: 'agent.name',           label: 'Agent Name' },
     { key: 'vim.mode',             label: 'Vim Mode' },
@@ -428,6 +482,7 @@ const PERCENTAGE_KEYS = new Set([
   'rate_limits.five_hour.used_percentage',
   'rate_limits.seven_day.used_percentage',
   'context_window.cache_efficiency',
+  'prompt_cache.hit_ratio',
 ]);
 
 // Fields that contain file-system paths (offer pathDepth option)
@@ -438,6 +493,7 @@ const PATH_KEYS = new Set([
   'workspace.project_dir',
   'worktree.path',
   'worktree.original_cwd',
+  'scratchpad_dir',
 ]);
 
 // Default data type for each known field key.
@@ -462,6 +518,21 @@ const FIELD_TYPE_DEFAULTS = {
   'context_window.used_tokens':              { dataType: 'number',         format: 'auto' },
   'context_window.remain_tokens':            { dataType: 'number',         format: 'auto' },
   // Rate Limits
+  // Prompt Cache — hit_ratio is a 0..1 ratio in the payload and is scaled to a
+  // percentage on read (see getFieldRawValue), so it is typed as a plain number here.
+  'prompt_cache.warm':                       { dataType: 'bool',           format: 'checkmark' },
+  'prompt_cache.caching_observed':           { dataType: 'bool',           format: 'checkmark' },
+  'prompt_cache.ttl':                        { dataType: 'string' },
+  'prompt_cache.expires_at':                 { dataType: 'unix_timestamp', format: 'short' },
+  'prompt_cache.requests':                   { dataType: 'number',         format: 'raw' },
+  'prompt_cache.misses':                     { dataType: 'number',         format: 'raw' },
+  'prompt_cache.expected_rebuilds':          { dataType: 'number',         format: 'raw' },
+  'prompt_cache.hit_ratio':                  { dataType: 'number',         format: 'raw' },
+  'prompt_cache.cache_write_tokens':         { dataType: 'number',         format: 'auto' },
+  'prompt_cache.miss_recache_tokens':        { dataType: 'number',         format: 'auto' },
+  'prompt_cache.last_miss_at':               { dataType: 'unix_timestamp', format: 'ago' },
+  'prompt_cache.recache_tokens_if_cold':     { dataType: 'number',         format: 'auto' },
+
   'rate_limits.five_hour.used_percentage':   { dataType: 'number',         format: 'raw' },
   'rate_limits.five_hour.resets_at':         { dataType: 'unix_timestamp', format: 'short' },
   'rate_limits.seven_day.used_percentage':   { dataType: 'number',         format: 'raw' },
@@ -472,12 +543,15 @@ const FIELD_TYPE_DEFAULTS = {
   'workspace.added_dirs':                    { dataType: 'number',  format: 'raw' },
   'workspace.git_worktree':                  { dataType: 'string' },
   'cwd':                                     { dataType: 'string' },
+  'scratchpad_dir':                          { dataType: 'string' },
+  'prompt_id':                               { dataType: 'string' },
   'session_name':                            { dataType: 'string' },
   'version':                                 { dataType: 'string' },
   'session_id':                              { dataType: 'string' },
   'agent.name':                              { dataType: 'string' },
   'vim.mode':                                { dataType: 'string' },
-  'fast_mode':                               { dataType: 'string' },
+  'fast_mode':                               { dataType: 'bool',           format: 'checkmark' },
+  'exceeds_200k_tokens':                     { dataType: 'bool',           format: 'checkmark' },
   // Worktree
   'worktree.name':                           { dataType: 'string' },
   'worktree.branch':                         { dataType: 'string' },
@@ -504,6 +578,17 @@ const SAMPLE_DATA = {
     remain_tokens: 168000,
   },
   exceeds_200k_tokens: false,
+  scratchpad_dir: '/tmp/claude/myproject/abc123/scratchpad',
+  prompt_id: '326b3063-783f-4b81-a638-a34e564dbe2b',
+  prompt_cache: {
+    warm: true, caching_observed: true, ttl: '1h',
+    expires_at: Math.floor(Date.now() / 1000) + 2460,
+    requests: 12, misses: 1, expected_rebuilds: 0,
+    hit_ratio: 0.734,
+    cache_write_tokens: 14217, miss_recache_tokens: 0,
+    last_miss_at: Math.floor(Date.now() / 1000) - 4320,
+    recache_tokens_if_cold: 43110,
+  },
   rate_limits: {
     five_hour: { used_percentage: 23.5, resets_at: 1738425600 },
     seven_day:  { used_percentage: 41.2, resets_at: 1738857600 },
@@ -953,7 +1038,13 @@ function deleteCustomField(cfId) {
 
 // ─── State ────────────────────────────────────────────────────────────────
 
-const state = { lines: [], customFields: [], themes: [], activeTheme: null, logNewFields: false, columnAlignmentEnabled: true, selection: { lineId: null, anchorId: null, fieldIds: [] } };
+const state = {
+  lines: [], customFields: [], themes: [], activeTheme: null, logNewFields: false,
+  columnAlignmentEnabled: true,
+  renderStyle: 'classic',
+  powerline: { separator: 'solid', separatorCustom: '', defaultSegmentBg: '#444444' },
+  selection: { lineId: null, anchorId: null, fieldIds: [] },
+};
 
 // ─── Line management ──────────────────────────────────────────────────────
 
@@ -1283,6 +1374,9 @@ function renderLines() {
   // Sync column alignment checkbox with state
   const alignEl = document.getElementById('toggle-column-alignment');
   if (alignEl) alignEl.checked = state.columnAlignmentEnabled;
+
+  // Sync Powerline UI controls with state
+  syncPowerlineUI();
 }
 
 function renderFieldChip(field, lineId, mergedLeft = false, mergedRight = false) {
@@ -1362,6 +1456,82 @@ function toggleColumnAlignment(enabled) {
   state.columnAlignmentEnabled = enabled;
   renderPreview();
   updateExportTextarea();
+}
+
+/** Shows/hides the Powerline options panel and updates state + preview. */
+function togglePowerline(enabled) {
+  state.renderStyle = enabled ? 'powerline' : 'classic';
+  const panel = document.getElementById('powerline-options');
+  if (panel) panel.style.display = enabled ? '' : 'none';
+  renderPreview();
+  updateExportTextarea();
+}
+
+/** Returns the separator glyph string for the current Powerline config. */
+function getPowerlineGlyph(separator, custom) {
+  const MAP = { solid: '', thin: '', slant: '', rounded: '' };
+  if (separator === 'custom') return custom || '';
+  return MAP[separator] || '';
+}
+
+function setPowerlineSeparator(val) {
+  state.powerline.separator = val;
+  const customRow = document.getElementById('pl-custom-row');
+  if (customRow) customRow.style.display = val === 'custom' ? 'flex' : 'none';
+  const preview = document.getElementById('pl-sep-preview');
+  if (preview) preview.textContent = getPowerlineGlyph(val, state.powerline.separatorCustom);
+  renderPreview();
+  updateExportTextarea();
+}
+
+function setPowerlineCustomGlyph(raw) {
+  // Accept \uXXXX escape notation or a direct character
+  const resolved = raw.replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) => String.fromCodePoint(parseInt(hex, 16)));
+  state.powerline.separatorCustom = resolved;
+  const preview = document.getElementById('pl-sep-preview');
+  if (preview) preview.textContent = getPowerlineGlyph(state.powerline.separator, resolved);
+  renderPreview();
+  updateExportTextarea();
+}
+
+function onPlBgPickerInput(hex) {
+  state.powerline.defaultSegmentBg = hex;
+  const txt = document.getElementById('pl-default-bg-text');
+  if (txt) txt.value = hex;
+  renderPreview();
+  updateExportTextarea();
+}
+
+function onPlBgTextInput(val) {
+  if (/^#[0-9a-fA-F]{6}$/.test(val)) {
+    state.powerline.defaultSegmentBg = val;
+    const picker = document.getElementById('pl-default-bg-picker');
+    if (picker) picker.value = val;
+    renderPreview();
+    updateExportTextarea();
+  }
+}
+
+/** Syncs all Powerline UI controls to the current state. Called by render(). */
+function syncPowerlineUI() {
+  const isOn = state.renderStyle === 'powerline';
+  const cb = document.getElementById('toggle-powerline');
+  if (cb) cb.checked = isOn;
+  const panel = document.getElementById('powerline-options');
+  if (panel) panel.style.display = isOn ? '' : 'none';
+  const sep = document.getElementById('pl-separator');
+  if (sep) sep.value = state.powerline.separator || 'solid';
+  const customRow = document.getElementById('pl-custom-row');
+  if (customRow) customRow.style.display = state.powerline.separator === 'custom' ? 'flex' : 'none';
+  const customGlyph = document.getElementById('pl-custom-glyph');
+  if (customGlyph) customGlyph.value = state.powerline.separatorCustom || '';
+  const sepPreview = document.getElementById('pl-sep-preview');
+  if (sepPreview) sepPreview.textContent = getPowerlineGlyph(state.powerline.separator, state.powerline.separatorCustom);
+  const bgPicker = document.getElementById('pl-default-bg-picker');
+  const bg = state.powerline.defaultSegmentBg || '#444444';
+  if (bgPicker && /^#[0-9a-fA-F]{6}$/.test(bg)) bgPicker.value = bg;
+  const bgText = document.getElementById('pl-default-bg-text');
+  if (bgText) bgText.value = bg;
 }
 
 /**
@@ -1703,10 +1873,96 @@ function getVisibleWidth(html) {
   return tmp.textContent.length;
 }
 
+/**
+ * Builds a Powerline segment from a group of fields.
+ * @param {Array} fields - Group of field objects (one mergeWithNext group).
+ * @param {string} defaultBg - Fallback hex bg when no field has bgOverride.
+ * @returns {{ bg: string, html: string }} Segment bg and rendered HTML body.
+ */
+function buildPowerlineSegment(fields, defaultBg) {
+  const segBg = fields.find(f => f.bgOverride && f.bg)?.bg ?? defaultBg;
+  // Render each field body: use segBg as effective bg for fields without override
+  const bodyHtml = fields.map(f => {
+    const fg = (f.fgOverride ?? (f.fg != null)) ? f.fg : null;
+    const bg = (f.bgOverride ?? (f.bg != null)) ? f.bg : segBg;
+    const style = [fg ? `color:${fg};` : '', bg ? `background:${bg};` : ''].join('');
+    const fieldThemeId  = f.themeId ?? state.activeTheme;
+    const fieldThemeObj = fieldThemeId ? state.themes.find(t => t.id === fieldThemeId) ?? null : null;
+    // Build a temporary proxy field with the segment bg injected as override
+    const proxy = Object.assign({}, f, { bg: segBg, bgOverride: true });
+    const previewOverride = (_editDraft && _editDraft.id === f.id)
+      ? (_editDraft.previewValue ?? f.previewValue ?? null)
+      : (f.previewValue ?? null);
+    return renderFieldHtml(proxy, SAMPLE_DATA, fieldThemeObj, previewOverride);
+  }).join('');
+  return { bg: segBg, html: bodyHtml };
+}
+
+/**
+ * Renders all lines in Powerline style with triangle separators.
+ * @param {Array} lines - All state.lines.
+ * @returns {Array<string>} Rendered HTML strings, one per non-empty line.
+ */
+function renderPowerlineLines(lines) {
+  const pl        = state.powerline;
+  const defaultBg = pl.defaultSegmentBg || '#444444';
+  const sepGlyph  = getPowerlineGlyph(pl.separator, pl.separatorCustom) || '';
+
+  // Run column alignment over the line groups (same structure as classic)
+  const lineGroups = buildLineGroups(lines);
+  return lineGroups.flatMap(group => {
+    // Pass 1: build segments per line
+    const allLineSegments = group.map(line => {
+      if (line.fields.length === 0) return [];
+      return buildGroups(line.fields)
+        .map(gf => buildPowerlineSegment(gf, defaultBg))
+        .filter(s => getVisibleWidth(s.html) > 0);
+    });
+
+    // Pass 2: max visible body width per segment position
+    const maxCount  = Math.max(0, ...allLineSegments.map(s => s.length));
+    const maxWidths = new Array(maxCount).fill(0);
+    for (let g = 0; g < maxCount; g++) {
+      for (const segs of allLineSegments) {
+        if (g < segs.length) {
+          const w = getVisibleWidth(segs[g].html);
+          if (w > maxWidths[g]) maxWidths[g] = w;
+        }
+      }
+    }
+
+    // Pass 3: assemble each line
+    return allLineSegments.map(segs => {
+      if (segs.length === 0) return null;
+      const parts = segs.map((seg, i) => {
+        const isLast  = i === segs.length - 1;
+        const padding = isLast ? 0 : maxWidths[i] - getVisibleWidth(seg.html);
+        const pad     = padding > 0
+          ? `<span style="background:${seg.bg};white-space:pre">${' '.repeat(padding)}</span>`
+          : '';
+        const sep = isLast
+          ? `<span style="color:${seg.bg};">${sepGlyph}</span>`
+          : `<span style="color:${seg.bg};background:${segs[i + 1].bg};">${sepGlyph}</span>`;
+        return seg.html + pad + sep;
+      }).join('');
+      return parts || null;
+    }).filter(Boolean);
+  });
+}
+
 function renderPreview() {
   const out = document.getElementById('preview-output');
   if (state.lines.length === 0) {
     out.innerHTML = '<span style="color:var(--color-text-muted);">Keine Zeilen konfiguriert.</span>';
+    return;
+  }
+
+  // Powerline mode: use dedicated renderer
+  if (state.renderStyle === 'powerline') {
+    const renderedLines = renderPowerlineLines(state.lines);
+    out.innerHTML = renderedLines.length > 0
+      ? renderedLines.join('<br>')
+      : '<span style="color:var(--color-text-muted);">Keine sichtbaren Felder.</span>';
     return;
   }
 
@@ -1761,6 +2017,7 @@ function buildExportJson() {
         if (f.format)        base.format = f.format;
         if (f.formatOptions) base.formatOptions = f.formatOptions;
         if (f.pathDepth)     base.pathDepth = f.pathDepth;
+        if (f.maxLength)     base.maxLength = f.maxLength;
         if (f.placeholder !== undefined && f.placeholder !== null) base.placeholder = f.placeholder;
         if (f.mergeWithNext) base.mergeWithNext = true;
         return base;
@@ -1787,6 +2044,15 @@ function buildExportJson() {
   }
   // Serialize only when disabled (true is the default — omit to keep JSON compact)
   if (!state.columnAlignmentEnabled) config.columnAlignmentEnabled = false;
+  // Serialize Powerline settings only when active
+  if (state.renderStyle === 'powerline') {
+    config.renderStyle = 'powerline';
+    config.powerline   = {
+      separator:        state.powerline.separator        || 'solid',
+      separatorCustom:  state.powerline.separatorCustom  || '',
+      defaultSegmentBg: state.powerline.defaultSegmentBg || '#444444',
+    };
+  }
   return JSON.stringify(config, null, 2);
 }
 
@@ -1885,6 +2151,7 @@ function loadConfig(json) {
       format:        f.format        || null,
       formatOptions: f.formatOptions || null,
       pathDepth:     f.pathDepth     || null,
+      maxLength:     f.maxLength     || null,
       placeholder:   f.placeholder,  // undefined if not in JSON
       mergeWithNext: f.mergeWithNext === true,
     })),
@@ -1913,6 +2180,12 @@ function loadConfig(json) {
 
   state.logNewFields = !!(json.logNewFields);
   state.columnAlignmentEnabled = json.columnAlignmentEnabled !== false;
+  state.renderStyle = json.renderStyle === 'powerline' ? 'powerline' : 'classic';
+  state.powerline   = {
+    separator:        json.powerline?.separator        || 'solid',
+    separatorCustom:  json.powerline?.separatorCustom  || '',
+    defaultSegmentBg: json.powerline?.defaultSegmentBg || '#444444',
+  };
 
   syncIdCounter();
   render();
@@ -2324,10 +2597,13 @@ function renderEditTabGeneral() {
     el.appendChild(symBlock);
     wireThinkingCustomSymbols();
   } else {
-    // type === 'field' — key is read-only; path fields also show pathDepth option
+    // type === 'field' — key is read-only. Shortening is offered per field kind:
+    // path fields get pathDepth (by segment), all others maxLength (by character).
     const isPathField   = PATH_KEYS.has(f.key);
     const hasDepth      = f.pathDepth != null && f.pathDepth > 0;
     const isPercentage  = PERCENTAGE_KEYS.has(f.key);
+    const isStringField = !isPathField && (f.dataType ?? 'string') === 'string';
+    const hasMaxLength  = f.maxLength != null && f.maxLength > 0;
     el.innerHTML = `
       ${isPercentage ? `
       <div style="margin-bottom:12px;">
@@ -2343,9 +2619,25 @@ function renderEditTabGeneral() {
       <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:4px;">Key</div>
       <div style="padding:6px 8px;border-radius:4px;border:1px solid var(--color-border);
                   background:var(--color-surface-2);font-size:12px;color:var(--color-text-muted);
-                  margin-bottom:${isPathField ? '12px' : '0'};">
+                  margin-bottom:${isPathField || isStringField ? '12px' : '0'};">
         ${escapeHtml(f.key || '')}
       </div>
+      ${isStringField ? `
+        <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:6px;">Max. Länge</div>
+        <label style="display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:4px;cursor:pointer;">
+          <input type="radio" name="edit-max-length" value="full" ${!hasMaxLength ? 'checked' : ''}>
+          <span>Unbegrenzt</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;">
+          <input type="radio" name="edit-max-length" value="limited" ${hasMaxLength ? 'checked' : ''}>
+          <span>Max.</span>
+          <input type="number" id="edit-max-length-n" min="1" max="999" value="${hasMaxLength ? f.maxLength : 12}"
+                 oninput="document.querySelector('[name=edit-max-length][value=limited]').checked=true"
+                 style="width:52px;padding:3px 6px;border-radius:4px;border:1px solid var(--color-border);
+                        background:var(--color-surface-2);color:var(--color-text);font-size:12px;">
+          <span>Zeichen (gekürzt mit …)</span>
+        </label>
+      ` : ''}
       ${isPathField ? `
         <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:6px;">Pfadtiefe</div>
         <label style="display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:4px;cursor:pointer;">
@@ -2385,7 +2677,7 @@ const DATATYPE_FORMATS = {
   currency:       [],
   bool:           [['true_false','true / false'],['yes_no','yes / no'],['checkmark','✓ / ✗'],['custom','Benutzerdefiniert']],
   number:         [['raw','Rohwert (12345678)'],['auto','Auto (456 / 33k / 939m / 12b)']],
-  unix_timestamp: [['hours','Stunden (75h 32m)'],['short','Kurz (1d 4h 32m)'],['long','Lang (1d 4hr 32min)'],['days_hours','Tage + Stunden (1d 23h)'],['days_hours_pad','Tage + Stunden mit 0d (0d 23h)'],['raw','Rohwert'],['local_time','Lokale Uhrzeit (14:32)'],['local_datetime','Lokales Datum + Uhrzeit (29.04.2026 14:32)'],['local_short','Lokal kurz (29.04. 14:32)'],['custom','Benutzerdefiniertes Pattern (.NET Style)']],
+  unix_timestamp: [['hours','Stunden (75h 32m)'],['short','Kurz (1d 4h 32m)'],['long','Lang (1d 4hr 32min)'],['days_hours','Tage + Stunden (1d 23h)'],['days_hours_pad','Tage + Stunden mit 0d (0d 23h)'],['raw','Rohwert'],['ago','Vergangen (vor 1h 12m)'],['local_time','Lokale Uhrzeit (14:32)'],['local_datetime','Lokales Datum + Uhrzeit (29.04.2026 14:32)'],['local_short','Lokal kurz (29.04. 14:32)'],['custom','Benutzerdefiniertes Pattern (.NET Style)']],
   duration_ms:    [['hours','Stunden (75h 32m)'],['short','Kurz (1d 4h 32m)'],['long','Lang (1d 4hr 32min)']],
 };
 
@@ -2493,6 +2785,26 @@ function renderFormatOptions(formats, currentFormat, dataType) {
         Literal in Hochkommas: <code>'T'</code> → T
       </div>
     </div>
+    <details id="edit-ago-labels" style="display:none;margin-top:8px;padding-left:20px;">
+      <summary style="font-size:11px;color:var(--color-text-muted);cursor:pointer;margin-bottom:6px;">
+        Texte anpassen (vor / in / gerade eben)
+      </summary>
+      ${AGO_LABEL_FIELDS.map(([name, label, hint]) => `
+        <div style="margin-bottom:6px;">
+          <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:3px;">${label}</div>
+          <input id="edit-ago-${name}" data-ago-name="${name}" type="text"
+                 value="${escapeHtml(_editDraft?.formatOptions?.[name] ?? AGO_DEFAULTS[name])}"
+                 placeholder="${escapeHtml(hint)}"
+                 style="width:100%;box-sizing:border-box;padding:5px 8px;border-radius:4px;
+                        border:1px solid var(--color-border);background:var(--color-surface-2);
+                        color:var(--color-text);font-size:12px;">
+        </div>
+      `).join('')}
+      <div style="font-size:10px;color:var(--color-text-muted);margin-top:4px;">
+        Leerzeichen sind Teil des Textes. Für englische Ausgabe:
+        Präfix leer, Suffix <code>&nbsp;ago</code>.
+      </div>
+    </details>
   ` : '';
 
   return `
@@ -2516,14 +2828,28 @@ function wireBoolCustomLabels() {
 
 // Wires show/hide of the unix_timestamp custom-pattern input and binds it to _editDraft.
 // Must be called AFTER innerHTML is set.
+// Also wires the 'ago' label block, which is shown only for format === 'ago'.
 function wireUnixTimestampCustomPattern() {
   function toggle() {
     const checked = document.querySelector('[name="edit-format"]:checked');
     const sec = document.getElementById('edit-custom-pattern');
     if (sec) sec.style.display = checked?.value === 'custom' ? '' : 'none';
+    const ago = document.getElementById('edit-ago-labels');
+    if (ago) ago.style.display = checked?.value === 'ago' ? '' : 'none';
   }
   document.querySelectorAll('[name="edit-format"]').forEach(r => r.addEventListener('change', toggle));
   toggle();
+
+  // Every ago label writes straight into the draft so the preview updates live.
+  document.querySelectorAll('#edit-ago-labels input[data-ago-name]').forEach(inp => {
+    if (inp.dataset.wired) return;
+    inp.dataset.wired = '1';
+    inp.addEventListener('input', () => {
+      if (!_editDraft.formatOptions) _editDraft.formatOptions = {};
+      _editDraft.formatOptions[inp.dataset.agoName] = inp.value;
+      renderPreview();
+    });
+  });
   const inp = document.getElementById('edit-pattern-input');
   if (inp && !inp.dataset.wired) {
     inp.dataset.wired = '1';
@@ -2748,6 +3074,17 @@ function saveEditDialog() {
     }
   }
 
+  // Read maxLength for non-path string fields
+  const maxLengthRadio = document.querySelector('[name="edit-max-length"]:checked');
+  if (maxLengthRadio) {
+    if (maxLengthRadio.value === 'full') {
+      _editDraft.maxLength = null;
+    } else {
+      const n = parseInt(document.getElementById('edit-max-length-n')?.value, 10);
+      _editDraft.maxLength = (isNaN(n) || n < 1) ? 1 : n;
+    }
+  }
+
   // Read Datentyp tab values into draft (only when tab is visible and type did not just switch)
   const isDatatypeTabVisible =
     (document.querySelector('.edit-tab-btn[data-tab="datatype"]')?.style.display ?? 'none') !== 'none';
@@ -2765,6 +3102,15 @@ function saveEditDialog() {
       _editDraft.formatOptions = {
         customPattern: document.getElementById('edit-pattern-input')?.value || '',
       };
+    } else if (_editDraft.dataType === 'unix_timestamp' && _editDraft.format === 'ago') {
+      // Only labels that differ from the default are persisted, so the JSON stays compact
+      // and a later change of the defaults still reaches untouched fields.
+      const opts = {};
+      AGO_LABEL_FIELDS.forEach(([name]) => {
+        const el = document.getElementById(`edit-ago-${name}`);
+        if (el && el.value !== AGO_DEFAULTS[name]) opts[name] = el.value;
+      });
+      _editDraft.formatOptions = Object.keys(opts).length > 0 ? opts : null;
     } else {
       _editDraft.formatOptions = null;
     }
@@ -3090,6 +3436,93 @@ function formatDotNetPattern(date, pattern) {
  * @param {object|null} formatOptions - extra options (e.g. trueLabel/falseLabel for bool/custom)
  * @returns {string}
  */
+// Default labels for the 'ago' timestamp format; overridable per field via formatOptions.
+const AGO_DEFAULTS = {
+  pastPrefix:   'vor ',
+  pastSuffix:   '',
+  futurePrefix: 'in ',
+  futureSuffix: '',
+  nowLabel:     'gerade eben',
+};
+
+// Edit-dialog rows for the 'ago' labels: [formatOptions key, label, placeholder]
+const AGO_LABEL_FIELDS = [
+  ['pastPrefix',   'Präfix Vergangenheit', 'vor '],
+  ['pastSuffix',   'Suffix Vergangenheit', '(leer)'],
+  ['futurePrefix', 'Präfix Zukunft',       'in '],
+  ['futureSuffix', 'Suffix Zukunft',       '(leer)'],
+  ['nowLabel',     'Unter 60 Sekunden',    'gerade eben'],
+];
+
+// Below this absolute delta 'ago' renders nowLabel — the duration formatter has
+// minute resolution, so anything shorter would read "vor 0h 0m" and look like a bug.
+const AGO_NOW_THRESHOLD_SECONDS = 60;
+
+/**
+ * Reads an 'ago' label from formatOptions, honoring deliberately empty strings.
+ * @param {object|null} formatOptions
+ * @param {string} name - key in AGO_DEFAULTS
+ * @returns {string}
+ */
+function agoLabel(formatOptions, name) {
+  const v = formatOptions?.[name];
+  return (v === undefined || v === null) ? AGO_DEFAULTS[name] : String(v);
+}
+
+/**
+ * Renders a unix timestamp as elapsed/upcoming duration. Mirrors Format-Ago in statusline.ps1.
+ * @param {number} unixSeconds
+ * @param {object|null} formatOptions - pastPrefix/pastSuffix/futurePrefix/futureSuffix/nowLabel
+ * @returns {string}
+ */
+function formatAgo(unixSeconds, formatOptions) {
+  const delta = unixSeconds - Math.floor(Date.now() / 1000);
+  if (Math.abs(delta) < AGO_NOW_THRESHOLD_SECONDS) return agoLabel(formatOptions, 'nowLabel');
+
+  const abs     = Math.abs(delta);
+  const days    = Math.floor(abs / 86400);
+  const hours   = Math.floor(abs / 3600);
+  const remH    = Math.floor((abs % 86400) / 3600);
+  const minutes = Math.floor((abs % 3600) / 60);
+  const magnitude = days > 0 ? `${days}d ${remH}h ${minutes}m` : `${hours}h ${minutes}m`;
+
+  const isPast = delta < 0;
+  const prefix = agoLabel(formatOptions, isPast ? 'pastPrefix' : 'futurePrefix');
+  const suffix = agoLabel(formatOptions, isPast ? 'pastSuffix' : 'futureSuffix');
+  return `${prefix}${magnitude}${suffix}`;
+}
+
+/**
+ * Truncates a string to maxLength characters, the last one replaced by an ellipsis.
+ * Mirrors Truncate-Text in statusline.ps1.
+ * @param {string} value
+ * @param {number|null} maxLength - null/0 leaves the value untouched
+ * @returns {string}
+ */
+function truncateText(value, maxLength) {
+  if (!maxLength || maxLength <= 0 || value.length <= maxLength) return value;
+  if (maxLength === 1) return '…';
+  return value.slice(0, maxLength - 1) + '…';
+}
+
+/**
+ * Reads a field's raw value and applies key-specific normalization.
+ * Mirrors Get-FieldRawValue in statusline.ps1.
+ * @param {object} data - sample or real payload
+ * @param {string} key  - dotted field key
+ * @returns {*} normalized value
+ */
+function getFieldRawValue(data, key) {
+  const value = getNestedValue(data, key);
+  if (key === 'workspace.added_dirs') return Array.isArray(value) ? value.length : (value == null ? 0 : 1);
+  // hit_ratio is a 0..1 ratio in the payload; shown as a percentage so it shares
+  // formatting and progress-bar thresholds with the other percentage fields.
+  if (key === 'prompt_cache.hit_ratio') {
+    return value == null ? value : Math.round(Number(value) * 1000) / 10;
+  }
+  return value;
+}
+
 function formatFieldValue(value, dataType, format, formatOptions) {
   switch (dataType) {
     case 'currency': {
@@ -3121,6 +3554,8 @@ function formatFieldValue(value, dataType, format, formatOptions) {
       }
     }
     case 'unix_timestamp': {
+      if (value === null || value === undefined) return '';
+      if (format === 'ago') return formatAgo(Number(value), formatOptions);
       if (['local_time', 'local_datetime', 'local_short', 'custom'].includes(format)) {
         const date = new Date(Number(value) * 1000);
         const patternMap = {
@@ -3225,7 +3660,7 @@ function renderFieldHtml(field, data, previewTheme = null, previewOverride = nul
   // Use previewOverride as raw value for progressbar when set (e.g. from edit dialog preview)
   const raw = (field.type === 'progressbar' && previewOverride !== null)
     ? previewOverride
-    : getNestedValue(data, field.key);
+    : getFieldRawValue(data, field.key);
   if (raw === undefined || raw === null || raw === '') {
     return '';
   }
@@ -3248,8 +3683,12 @@ function renderFieldHtml(field, data, previewTheme = null, previewOverride = nul
   let displayValue = field.dataType
     ? formatFieldValue(raw, field.dataType, field.format, field.formatOptions)
     : String(raw);
-  if (field.pathDepth && PATH_KEYS.has(field.key)) {
-    displayValue = truncatePath(displayValue, field.pathDepth);
+  // Path fields shorten by segment count, every other field by character count —
+  // one tool per field kind, never both on the same field.
+  if (PATH_KEYS.has(field.key)) {
+    if (field.pathDepth) displayValue = truncatePath(displayValue, field.pathDepth);
+  } else if (field.maxLength) {
+    displayValue = truncateText(displayValue, Number(field.maxLength));
   }
   return `<span style="${style}">${escapeHtml(displayValue)}</span>`;
 }

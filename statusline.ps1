@@ -261,7 +261,9 @@ function ConvertTo-AnsiBg {
     return "$([char]27)[48;2;${r};${g};${b}m"
 }
 
-$script:AnsiReset = "$([char]27)[0m"
+$script:AnsiReset      = "$([char]27)[0m"
+$script:RenderStyle    = 'classic'
+$script:PowerlineConfig = $null
 
 # Path for new-fields log (set by Invoke-Main, overridable in tests via $script:NewFieldsLogPath)
 $script:LogNewFields     = $false
@@ -281,8 +283,24 @@ $script:PathKeys = @(
     'workspace.current_dir',
     'workspace.project_dir',
     'worktree.path',
-    'worktree.original_cwd'
+    'worktree.original_cwd',
+    'scratchpad_dir'
 )
+
+# Default labels for the 'ago' format of unix_timestamp fields.
+# Overridable per field via formatOptions (see Get-FormatOption).
+$script:AgoDefaults = @{
+    pastPrefix   = 'vor '
+    pastSuffix   = ''
+    futurePrefix = 'in '
+    futureSuffix = ''
+    nowLabel     = 'gerade eben'
+}
+
+# Below this absolute delta the 'ago' format renders nowLabel instead of a duration.
+# Fixed at 60s because Format-Duration has minute resolution — anything shorter
+# would render as "vor 0h 0m" and look like a bug.
+$script:AgoNowThresholdSeconds = 60
 
 <#
 .SYNOPSIS
@@ -427,12 +445,71 @@ function Format-Duration {
     For unix_timestamp countdown formats: value is treated as future epoch; past timestamps display as '0h 0m'.
     For unix_timestamp local-time formats (local_time, local_datetime, local_short, custom): converts epoch
     to local timezone and formats it. 'custom' reads pattern from FormatOptions.customPattern.
+    For unix_timestamp 'ago': reports the distance in both directions, see Format-Ago.
+    A null unix_timestamp yields an empty string rather than epoch 0.
 .PARAMETER FormatOptions
     PSCustomObject with extra options. Used for bool custom format: trueLabel, falseLabel.
     For unix_timestamp custom format: customPattern (.NET DateTime format string).
+    For unix_timestamp 'ago' format: pastPrefix, pastSuffix, futurePrefix, futureSuffix, nowLabel.
 .OUTPUTS
     Formatted string ready for display.
 #>
+function Get-FormatOption {
+    param(
+        [object]$FormatOptions,
+        [string]$Name,
+        [string]$Default
+    )
+    # Property presence is checked explicitly so that a deliberately empty string
+    # (e.g. an empty pastSuffix) is honored instead of falling back to the default.
+    if ($null -ne $FormatOptions -and
+        $FormatOptions.PSObject.Properties.Name -contains $Name -and
+        $null -ne $FormatOptions.$Name) {
+        return [string]$FormatOptions.$Name
+    }
+    return $Default
+}
+
+<#
+.SYNOPSIS
+    Renders a unix timestamp as an elapsed/upcoming duration with configurable labels.
+.DESCRIPTION
+    Unlike the countdown formats, which clamp past timestamps to '0h 0m', this format
+    reports the distance in both directions:
+      past   -> "{pastPrefix}1h 12m{pastSuffix}"     (default: "vor 1h 12m")
+      future -> "{futurePrefix}1h 12m{futureSuffix}" (default: "in 1h 12m")
+      < 60s  -> "{nowLabel}"                         (default: "gerade eben")
+.PARAMETER UnixSeconds
+    Epoch seconds of the event.
+.PARAMETER FormatOptions
+    Optional PSCustomObject with pastPrefix, pastSuffix, futurePrefix, futureSuffix, nowLabel.
+.OUTPUTS
+    Formatted string.
+#>
+function Format-Ago {
+    param(
+        [long]$UnixSeconds,
+        [object]$FormatOptions
+    )
+
+    $deltaSeconds = [long]([DateTimeOffset]::FromUnixTimeSeconds($UnixSeconds) - [DateTimeOffset]::UtcNow).TotalSeconds
+
+    if ([Math]::Abs($deltaSeconds) -lt $script:AgoNowThresholdSeconds) {
+        return Get-FormatOption $FormatOptions 'nowLabel' $script:AgoDefaults.nowLabel
+    }
+
+    $magnitude = Format-Duration -TotalSeconds ([Math]::Abs($deltaSeconds)) -Format 'short'
+
+    if ($deltaSeconds -lt 0) {
+        $prefix = Get-FormatOption $FormatOptions 'pastPrefix' $script:AgoDefaults.pastPrefix
+        $suffix = Get-FormatOption $FormatOptions 'pastSuffix' $script:AgoDefaults.pastSuffix
+    } else {
+        $prefix = Get-FormatOption $FormatOptions 'futurePrefix' $script:AgoDefaults.futurePrefix
+        $suffix = Get-FormatOption $FormatOptions 'futureSuffix' $script:AgoDefaults.futureSuffix
+    }
+    return "${prefix}${magnitude}${suffix}"
+}
+
 function Format-FieldValue {
     param(
         [object]$Value,
@@ -441,11 +518,15 @@ function Format-FieldValue {
         [object]$FormatOptions
     )
 
+    # A null timestamp means "the event never happened" (e.g. prompt_cache.last_miss_at
+    # before the first cache miss). Rendering it as epoch 0 would show 01.01.1970, so
+    # the field yields nothing instead and the caller's placeholder logic takes over.
+    if ($null -eq $Value -and $DataType -eq 'unix_timestamp') { return '' }
+
     # Fallback for null values — use a sensible zero-value per data type
     if ($null -eq $Value) {
         switch ($DataType) {
             { $_ -in 'number','currency','duration_ms' } { $Value = 0 }
-            'unix_timestamp' { $Value = 0 }
             'bool'           { $Value = $false }
             default          { $Value = '' }
         }
@@ -453,6 +534,9 @@ function Format-FieldValue {
 
     switch ($DataType) {
         'unix_timestamp' {
+            if ($Format -eq 'ago') {
+                return Format-Ago -UnixSeconds ([long]$Value) -FormatOptions $FormatOptions
+            }
             if ($Format -in @('local_time', 'local_datetime', 'local_short', 'custom')) {
                 $local = [DateTimeOffset]::FromUnixTimeSeconds([long]$Value).ToLocalTime().DateTime
                 $pattern = switch ($Format) {
@@ -548,6 +632,55 @@ function Truncate-Path {
 .OUTPUTS
     ANSI-formatted string, or empty string if the field value is not found.
 #>
+function Truncate-Text {
+    param(
+        [string]$Value,
+        [int]$MaxLength
+    )
+    if ($MaxLength -le 0 -or $Value.Length -le $MaxLength) { return $Value }
+    # Unicode code point instead of the literal char, so the script survives being
+    # read without a UTF-8 BOM on the Windows ANSI code page.
+    $ellipsis = [char]0x2026  # …
+    if ($MaxLength -eq 1) { return "$ellipsis" }
+    return $Value.Substring(0, $MaxLength - 1) + $ellipsis
+}
+
+<#
+.SYNOPSIS
+    Reads a field's raw value from the payload and applies key-specific normalization.
+.DESCRIPTION
+    Two payload keys do not mean literally what they contain:
+    - workspace.added_dirs is an array; the status line shows its element count.
+    - prompt_cache.hit_ratio is a 0..1 ratio; the status line shows it as a percentage
+      so it shares formatting and progress-bar thresholds with the other percentages.
+.PARAMETER Data
+    PSCustomObject parsed from Claude Code's JSON input.
+.PARAMETER Key
+    Dotted field key.
+.OUTPUTS
+    The normalized value, or $null when the key is absent.
+#>
+function Get-FieldRawValue {
+    param(
+        [PSCustomObject]$Data,
+        [string]$Key
+    )
+    $value = Get-NestedValue $Data $Key
+
+    switch ($Key) {
+        'workspace.added_dirs' {
+            # An empty array is unboxed to $null by the pipeline, so @() is applied
+            # unconditionally to correctly yield 0 instead of an empty result.
+            return @($value).Count
+        }
+        'prompt_cache.hit_ratio' {
+            if ($null -eq $value) { return $null }
+            return [Math]::Round([double]$value * 100, 1)
+        }
+        default { return $value }
+    }
+}
+
 function Format-Field {
     param(
         [PSCustomObject]$Field,
@@ -573,7 +706,7 @@ function Format-Field {
             return "${fgAnsi}${bgAnsi}$($Field.text)${resetAnsi}"
         }
         'progressbar' {
-            $value = Get-NestedValue $Data $Field.key
+            $value = Get-FieldRawValue $Data $Field.key
             # Default to 0 when value is missing so the bar renders at 0%
             if ($null -eq $value) { $value = 0 }
             if ($Field.progressStyle -eq 'raw') {
@@ -690,14 +823,7 @@ function Format-Field {
         }
         default {
             # type = 'field'
-            $value = Get-NestedValue $Data $Field.key
-
-            # Special case: workspace.added_dirs is an array — display element count.
-            # An empty array is unboxed to $null by the pipeline, so we apply @().Count
-            # unconditionally to correctly yield 0 instead of an empty result.
-            if ($Field.key -eq 'workspace.added_dirs') {
-                $value = @($value).Count
-            }
+            $value = Get-FieldRawValue $Data $Field.key
 
             if ($null -eq $value -or "$value" -eq '') {
                 # Priority: field.placeholder > worktree.branch hardcoded > per-dataType default > hide
@@ -732,9 +858,14 @@ function Format-Field {
             } else {
                 "$value"
             }
-            # Apply path truncation for path-type fields when pathDepth is configured
-            if ($Field.pathDepth -and $script:PathKeys -contains $Field.key) {
-                $formatted = Truncate-Path -Value $formatted -Depth $Field.pathDepth
+            # Path fields are shortened by segment count, every other field by character
+            # count — one tool per field kind, never both on the same field.
+            if ($script:PathKeys -contains $Field.key) {
+                if ($Field.pathDepth) {
+                    $formatted = Truncate-Path -Value $formatted -Depth $Field.pathDepth
+                }
+            } elseif ($Field.maxLength) {
+                $formatted = Truncate-Text -Value $formatted -MaxLength ([int]$Field.maxLength)
             }
             return "${fgAnsi}${bgAnsi}${formatted}${resetAnsi}"
         }
@@ -752,6 +883,168 @@ function Format-Field {
 function Get-VisibleWidth {
     param([string]$Text)
     return ($Text -replace "\x1b\[[0-9;]*m", '').Length
+}
+
+<#
+.SYNOPSIS
+    Returns the Powerline separator glyph for the configured style.
+.PARAMETER PowerlineConfig
+    PSCustomObject from config.powerline (may be null — returns solid arrow as default).
+.OUTPUTS
+    String containing exactly the separator character(s).
+#>
+function Get-PowerlineSeparator {
+    param([object]$PowerlineConfig)
+    if (-not $PowerlineConfig -or -not $PowerlineConfig.separator) { return [char]0xE0B0 }
+    switch ($PowerlineConfig.separator) {
+        'solid'   { return [char]0xE0B0 }
+        'thin'    { return [char]0xE0B1 }
+        'slant'   { return [char]0xE0B8 }
+        'rounded' { return [char]0xE0B4 }
+        'custom'  {
+            $c = "$($PowerlineConfig.separatorCustom)"
+            if ([string]::IsNullOrEmpty($c)) { return [char]0xE0B0 }
+            return $c
+        }
+        default   { return [char]0xE0B0 }
+    }
+}
+
+<#
+.SYNOPSIS
+    Renders a single group of fields as a Powerline segment: body text + resolved segment bg.
+.PARAMETER Group
+    Array of field PSCustomObjects belonging to one mergeWithNext group.
+.PARAMETER Data
+    PSCustomObject parsed from Claude Code's JSON input.
+.PARAMETER DefaultBg
+    Hex color used when no field in the group has an explicit bg override.
+.OUTPUTS
+    PSCustomObject with properties: bg (hex string), body (ANSI string without separator).
+#>
+function Build-PowerlineSegment {
+    param(
+        [array]$Group,
+        [PSCustomObject]$Data,
+        [string]$DefaultBg
+    )
+
+    # Segment bg = first field with an explicit bgOverride; fall back to defaultSegmentBg.
+    $segBg = $null
+    foreach ($f in $Group) {
+        if ($f.bgOverride -and $f.bg -and "$($f.bg)" -ne '') { $segBg = $f.bg; break }
+    }
+    if (-not $segBg) { $segBg = $DefaultBg }
+
+    $segBgAnsi   = ConvertTo-AnsiBg $segBg
+    $prevThemeBg = $script:ThemeBg
+    $script:ThemeBg = $segBg    # fields without explicit bg inherit the segment bg via theme path
+
+    $bodyParts = [System.Collections.Generic.List[string]]::new()
+    foreach ($field in $Group) {
+        $out = Format-Field $field $Data
+        if ($out) {
+            # Re-assert segment bg before each field to recover from prior field's reset.
+            $bodyParts.Add($segBgAnsi + $out)
+        }
+    }
+
+    $script:ThemeBg = $prevThemeBg
+
+    return [PSCustomObject]@{ bg = $segBg; body = $bodyParts -join '' }
+}
+
+<#
+.SYNOPSIS
+    Renders a group of lines in Powerline style with inter-segment triangle separators.
+.DESCRIPTION
+    Mirrors Format-Line-Group but uses mergeWithNext groups as Powerline segments:
+    each segment has a uniform bg, separated by a Nerd Font triangle glyph whose
+    fg=prev.bg and bg=next.bg. The last segment ends with an end-cap triangle into
+    terminal default. Cross-line column alignment is preserved via a two-pass width scan.
+.PARAMETER Lines
+    Array of line config objects in one alignment group.
+.PARAMETER Data
+    PSCustomObject parsed from Claude Code JSON input.
+.OUTPUTS
+    Rendered string for all lines in this group, joined by newline.
+#>
+function Format-Line-Group-Powerline {
+    param(
+        [array]$Lines,
+        [PSCustomObject]$Data
+    )
+
+    $plConfig  = $script:PowerlineConfig
+    $separator = Get-PowerlineSeparator $plConfig
+    $defaultBg = if ($plConfig -and $plConfig.defaultSegmentBg) { "$($plConfig.defaultSegmentBg)" } else { '#444444' }
+
+    # Pass 1: build segments per line
+    $allLineSegments = [System.Collections.Generic.List[object]]::new()
+    foreach ($line in $Lines) {
+        if (-not $line.fields -or $line.fields.Count -eq 0) {
+            $allLineSegments.Add([object[]]@())
+            continue
+        }
+        $groups   = Build-Groups $line.fields
+        $segments = [System.Collections.Generic.List[object]]::new()
+        foreach ($group in $groups) {
+            $seg = Build-PowerlineSegment $group $Data $defaultBg
+            # Only include segments with visible content (skip blank/empty groups)
+            if ((Get-VisibleWidth $seg.body) -gt 0) { $segments.Add($seg) }
+        }
+        $allLineSegments.Add($segments.ToArray())
+    }
+
+    # Pass 2: measure max visible body width per segment position (alignment)
+    $maxSegCount = 0
+    foreach ($segs in $allLineSegments) {
+        if ($segs -is [array] -and $segs.Count -gt $maxSegCount) { $maxSegCount = $segs.Count }
+    }
+    $maxWidths = [int[]]::new([math]::Max(1, $maxSegCount))
+    for ($g = 0; $g -lt $maxSegCount; $g++) {
+        foreach ($segs in $allLineSegments) {
+            if ($segs -is [array] -and $g -lt $segs.Count) {
+                $w = Get-VisibleWidth $segs[$g].body
+                if ($w -gt $maxWidths[$g]) { $maxWidths[$g] = $w }
+            }
+        }
+    }
+
+    # Pass 3: assemble each line with padding inside segments + separator glyphs between them
+    $outputLines = [System.Collections.Generic.List[string]]::new()
+    foreach ($segs in $allLineSegments) {
+        if (-not ($segs -is [array]) -or $segs.Count -eq 0) { continue }
+
+        $sb = [System.Text.StringBuilder]::new()
+        for ($i = 0; $i -lt $segs.Count; $i++) {
+            $seg    = $segs[$i]
+            $isLast = $i -eq $segs.Count - 1
+
+            # Body
+            [void]$sb.Append($seg.body)
+
+            # Alignment padding rendered in segment bg so the background fills evenly
+            $visW    = Get-VisibleWidth $seg.body
+            $padding = if (-not $isLast) { $maxWidths[$i] - $visW } else { 0 }
+            if ($padding -gt 0) {
+                [void]$sb.Append((ConvertTo-AnsiBg $seg.bg) + (' ' * $padding))
+            }
+
+            # Separator glyph: fg=this.bg, bg=next.bg (or terminal default for end-cap)
+            if (-not $isLast) {
+                $nextBg = $segs[$i + 1].bg
+                [void]$sb.Append("$($script:AnsiReset)$(ConvertTo-AnsiFg $seg.bg)$(ConvertTo-AnsiBg $nextBg)${separator}")
+            } else {
+                [void]$sb.Append("$($script:AnsiReset)$(ConvertTo-AnsiFg $seg.bg)${separator}$($script:AnsiReset)")
+            }
+        }
+
+        $rendered = $sb.ToString()
+        if ((Get-VisibleWidth $rendered) -gt 0) { $outputLines.Add($rendered) }
+    }
+
+    return $outputLines -join "`n"
 }
 
 <#
@@ -827,6 +1120,11 @@ function Format-Line-Group {
         [array]$Lines,
         [PSCustomObject]$Data
     )
+
+    # Dispatch to Powerline renderer when renderStyle is set globally
+    if ($script:RenderStyle -eq 'powerline') {
+        return Format-Line-Group-Powerline $Lines $Data
+    }
 
     # Pass 1: render all groups for all lines, measure visible widths
     $allLineGroups = [System.Collections.Generic.List[object]]::new()
@@ -1009,7 +1307,8 @@ function Get-RateLimitsData {
     Computes derived fields and injects them into $Data via Add-Member.
 .DESCRIPTION
     General-purpose hook for all derived field computations. Computes:
-    - context_window.cache_efficiency = cache_read_input_tokens / total_input_tokens * 100
+    - context_window.cache_efficiency = prompt_cache.hit_ratio * 100, falling back to
+      cache_read_input_tokens / total_input_tokens * 100 on payloads without prompt_cache
     - context_window.used_tokens      = context_window_size * used_percentage / 100
     - context_window.remain_tokens    = context_window_size * remaining_percentage / 100
     Guards prevent computation when required inputs are null or zero.
@@ -1019,11 +1318,21 @@ function Get-RateLimitsData {
 function Compute-DerivedFields {
     param([PSCustomObject]$Data)
 
-    # cache_efficiency = cache_read_input_tokens / total_input_tokens * 100
-    $cacheRead  = Get-NestedValue $Data 'context_window.current_usage.cache_read_input_tokens'
-    $totalInput = Get-NestedValue $Data 'context_window.total_input_tokens'
-    if ($null -ne $cacheRead -and $null -ne $totalInput -and [double]$totalInput -gt 0) {
-        $efficiency = [Math]::Round([double]$cacheRead / [double]$totalInput * 100, 1)
+    # cache_efficiency is the deprecated name of what Claude Code now reports natively as
+    # prompt_cache.hit_ratio (a 0..1 ratio). The native value wins; the original
+    # self-computed formula remains as a fallback for payloads without prompt_cache.
+    $efficiency = $null
+    $hitRatio   = Get-NestedValue $Data 'prompt_cache.hit_ratio'
+    if ($null -ne $hitRatio) {
+        $efficiency = [Math]::Round([double]$hitRatio * 100, 1)
+    } else {
+        $cacheRead  = Get-NestedValue $Data 'context_window.current_usage.cache_read_input_tokens'
+        $totalInput = Get-NestedValue $Data 'context_window.total_input_tokens'
+        if ($null -ne $cacheRead -and $null -ne $totalInput -and [double]$totalInput -gt 0) {
+            $efficiency = [Math]::Round([double]$cacheRead / [double]$totalInput * 100, 1)
+        }
+    }
+    if ($null -ne $efficiency -and $null -ne $Data.context_window) {
         $Data.context_window | Add-Member -NotePropertyName 'cache_efficiency' `
                                           -NotePropertyValue $efficiency -Force
     }
@@ -1206,10 +1515,18 @@ function Invoke-Main {
         }
     }
 
+    # Load Powerline render style and options into script scope
+    $script:RenderStyle     = if ($config.renderStyle) { "$($config.renderStyle)" } else { 'classic' }
+    $script:PowerlineConfig = $config.powerline
+
     # Render each line — use two-pass column alignment unless explicitly disabled
     if ($config.columnAlignmentEnabled -ne $false) {
         return Format-Lines-Aligned $config.lines $data
     } else {
+        if ($script:RenderStyle -eq 'powerline') {
+            $output = $config.lines | ForEach-Object { Format-Line-Group-Powerline @($_) $data } | Where-Object { $_ -ne '' }
+            return $output -join "`n"
+        }
         $output = $config.lines | ForEach-Object { Format-Line $_ $data } | Where-Object { $_ -ne '' }
         return $output -join "`n"
     }
