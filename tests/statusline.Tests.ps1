@@ -2124,6 +2124,273 @@ Describe 'Encoding — new_fields_indicator emits UTF-8 bullet' {
     }
 }
 
+Describe 'Powerline rendering' {
+    BeforeAll {
+        # Reset script-level vars to known state before each test
+        $script:ThemesMap      = @{}
+        $script:ThemeFg        = $null
+        $script:ThemeBg        = $null
+        $script:KnownKeys      = $null
+        $script:LogNewFields   = $false
+        $script:PbThresholds   = @(
+            [PSCustomObject]@{ upTo = 50;  fg = '#4ade80' }
+            [PSCustomObject]@{ upTo = 80;  fg = '#facc15' }
+            [PSCustomObject]@{ upTo = 100; fg = '#f87171' }
+        )
+
+        # Helper: strip all ANSI escape sequences from a string
+        function Strip-Ansi { param([string]$s); $s -replace "\x1b\[[0-9;]*m", '' }
+
+        # Helper: build a minimal Powerline config PSCustomObject
+        function Make-PlConfig {
+            param([string]$Sep = 'solid', [string]$Custom = '', [string]$DefBg = '#444444')
+            [PSCustomObject]@{
+                renderStyle    = 'powerline'
+                powerline      = [PSCustomObject]@{
+                    separator        = $Sep
+                    separatorCustom  = $Custom
+                    defaultSegmentBg = $DefBg
+                }
+            }
+        }
+
+        # Helper: set script-scope Powerline state (simulates what Invoke-Main does)
+        function Set-PlMode {
+            param([string]$Sep = 'solid', [string]$Custom = '', [string]$DefBg = '#444444')
+            $script:RenderStyle     = 'powerline'
+            $script:PowerlineConfig = [PSCustomObject]@{
+                separator        = $Sep
+                separatorCustom  = $Custom
+                defaultSegmentBg = $DefBg
+            }
+        }
+
+        function Clear-PlMode {
+            $script:RenderStyle     = 'classic'
+            $script:PowerlineConfig = $null
+        }
+    }
+
+    AfterEach { Clear-PlMode }
+
+    Context 'Get-PowerlineSeparator' {
+        It 'returns solid arrow for solid style' {
+            $cfg = [PSCustomObject]@{ separator = 'solid'; separatorCustom = '' }
+            Get-PowerlineSeparator $cfg | Should -Be ([char]0xE0B0)
+        }
+
+        It 'returns thin arrow for thin style' {
+            $cfg = [PSCustomObject]@{ separator = 'thin'; separatorCustom = '' }
+            Get-PowerlineSeparator $cfg | Should -Be ([char]0xE0B1)
+        }
+
+        It 'returns slant glyph for slant style' {
+            $cfg = [PSCustomObject]@{ separator = 'slant'; separatorCustom = '' }
+            Get-PowerlineSeparator $cfg | Should -Be ([char]0xE0B8)
+        }
+
+        It 'returns rounded glyph for rounded style' {
+            $cfg = [PSCustomObject]@{ separator = 'rounded'; separatorCustom = '' }
+            Get-PowerlineSeparator $cfg | Should -Be ([char]0xE0B4)
+        }
+
+        It 'returns custom glyph when style is custom and separatorCustom is set' {
+            $cfg = [PSCustomObject]@{ separator = 'custom'; separatorCustom = '|' }
+            Get-PowerlineSeparator $cfg | Should -Be '|'
+        }
+
+        It 'falls back to solid arrow when style is custom but separatorCustom is empty' {
+            $cfg = [PSCustomObject]@{ separator = 'custom'; separatorCustom = '' }
+            Get-PowerlineSeparator $cfg | Should -Be ([char]0xE0B0)
+        }
+
+        It 'returns solid arrow for unknown style' {
+            $cfg = [PSCustomObject]@{ separator = 'unknown'; separatorCustom = '' }
+            Get-PowerlineSeparator $cfg | Should -Be ([char]0xE0B0)
+        }
+
+        It 'returns solid arrow when config is null' {
+            Get-PowerlineSeparator $null | Should -Be ([char]0xE0B0)
+        }
+    }
+
+    Context 'Single-segment rendering' {
+        It 'renders segment body with solid arrow end-cap via Invoke-Main' {
+            # Arrange
+            $configPath = Join-Path $TestDrive 'pl-single.json'
+            $config = @{
+                renderStyle = 'powerline'
+                powerline   = @{ separator = 'solid'; separatorCustom = ''; defaultSegmentBg = '#334455' }
+                lines = @(@{
+                    fields = @(@{ type='field'; key='model.display_name'; fg='#ffffff'; bg='#334455'; fgOverride=$true; bgOverride=$true })
+                })
+            } | ConvertTo-Json -Depth 10
+            Set-Content -Path $configPath -Value $config -Encoding UTF8
+
+            # Act
+            $result = Invoke-Main -ConfigPath $configPath -InputJson '{"model":{"display_name":"Opus"}}'
+
+            # Assert
+            Strip-Ansi $result | Should -Match 'Opus'
+            # End-cap solid arrow (U+E0B0) must appear
+            $result | Should -Match ([char]0xE0B0)
+            # Must end with ANSI reset
+            $result | Should -Match "$([char]27)\[0m$"
+        }
+
+        It 'applies defaultSegmentBg when no field has explicit bgOverride' {
+            # Arrange
+            $configPath = Join-Path $TestDrive 'pl-defaultbg.json'
+            $config = @{
+                renderStyle = 'powerline'
+                powerline   = @{ separator = 'solid'; separatorCustom = ''; defaultSegmentBg = '#aabbcc' }
+                lines = @(@{
+                    fields = @(@{ type='static'; text='hello'; fg=$null; bg=$null })
+                })
+            } | ConvertTo-Json -Depth 10
+            Set-Content -Path $configPath -Value $config -Encoding UTF8
+
+            # Act
+            $result = Invoke-Main -ConfigPath $configPath -InputJson '{}'
+
+            # Assert: output contains the defaultSegmentBg ANSI code (48;2;170;187;204)
+            $r = [Convert]::ToInt32('aa', 16)
+            $g = [Convert]::ToInt32('bb', 16)
+            $b = [Convert]::ToInt32('cc', 16)
+            $result | Should -Match "48;2;${r};${g};${b}"
+        }
+    }
+
+    Context 'Two-segment separator' {
+        It 'places separator with correct fg=seg1.bg and bg=seg2.bg' {
+            # Arrange
+            $configPath = Join-Path $TestDrive 'pl-twoseg.json'
+            $config = @{
+                renderStyle = 'powerline'
+                powerline   = @{ separator = 'solid'; separatorCustom = ''; defaultSegmentBg = '#111111' }
+                lines = @(@{
+                    fields = @(
+                        @{ type='static'; text='A'; fg=$null; bg='#ff0000'; bgOverride=$true; mergeWithNext=$false }
+                        @{ type='static'; text='B'; fg=$null; bg='#0000ff'; bgOverride=$true; mergeWithNext=$false }
+                    )
+                })
+            } | ConvertTo-Json -Depth 10
+            Set-Content -Path $configPath -Value $config -Encoding UTF8
+
+            # Act
+            $result = Invoke-Main -ConfigPath $configPath -InputJson '{}'
+
+            # Assert: both segment bodies appear
+            Strip-Ansi $result | Should -Match 'A'
+            Strip-Ansi $result | Should -Match 'B'
+            # Triangle fg=seg1.bg (#ff0000 → 255;0;0) must appear before the separator
+            $result | Should -Match '38;2;255;0;0'
+            # Triangle bg=seg2.bg (#0000ff → 0;0;255) must appear before the separator
+            $result | Should -Match '48;2;0;0;255'
+        }
+    }
+
+    Context 'Segment-bg resolution' {
+        It 'uses bg of first field with bgOverride when multiple fields have different bg values' {
+            # Arrange
+            $configPath = Join-Path $TestDrive 'pl-bgresolution.json'
+            $config = @{
+                renderStyle = 'powerline'
+                powerline   = @{ separator = 'solid'; separatorCustom = ''; defaultSegmentBg = '#111111' }
+                lines = @(@{
+                    fields = @(
+                        @{ type='static'; text='A'; fg=$null; bg='#aaaaaa'; bgOverride=$true; mergeWithNext=$true }
+                        @{ type='static'; text='B'; fg=$null; bg='#bbbbbb'; bgOverride=$true; mergeWithNext=$false }
+                    )
+                })
+            } | ConvertTo-Json -Depth 10
+            Set-Content -Path $configPath -Value $config -Encoding UTF8
+
+            # Act
+            $result = Invoke-Main -ConfigPath $configPath -InputJson '{}'
+
+            # Assert: #aaaaaa (170;170;170) is used as segment bg for the end-cap triangle fg
+            $result | Should -Match '38;2;170;170;170'
+        }
+    }
+
+    Context 'Custom separator' {
+        It 'uses custom glyph character' {
+            # Arrange
+            $configPath = Join-Path $TestDrive 'pl-customsep.json'
+            $config = @{
+                renderStyle = 'powerline'
+                powerline   = @{ separator = 'custom'; separatorCustom = '>'; defaultSegmentBg = '#123456' }
+                lines = @(@{
+                    fields = @(
+                        @{ type='static'; text='X'; fg=$null; bg='#ff0000'; bgOverride=$true; mergeWithNext=$false }
+                        @{ type='static'; text='Y'; fg=$null; bg='#00ff00'; bgOverride=$true; mergeWithNext=$false }
+                    )
+                })
+            } | ConvertTo-Json -Depth 10
+            Set-Content -Path $configPath -Value $config -Encoding UTF8
+
+            # Act
+            $result = Invoke-Main -ConfigPath $configPath -InputJson '{}'
+
+            # Assert: the custom separator character appears in the output
+            Strip-Ansi $result | Should -Match '>'
+        }
+    }
+
+    Context 'End-cap behavior' {
+        It 'last segment ends with triangle in terminal default bg (no explicit bg reset code only)' {
+            # Arrange
+            Set-PlMode -DefBg '#334455'
+            $lines = @(@{
+                fields = @(@{ type='static'; text='end'; fg=$null; bg='#334455'; bgOverride=$true })
+            }) | ConvertTo-Json -Depth 5 | ConvertFrom-Json
+
+            # Act
+            $result = Format-Line-Group-Powerline $lines ([PSCustomObject]@{})
+
+            # Assert: final token sequence is reset → fg(segBg) → arrow → reset
+            # The reset appears at least twice: once before end-cap, once after
+            ($result -split [regex]::Escape("$([char]27)[0m")).Count | Should -BeGreaterThan 1
+            $result | Should -Match "$([char]27)\[0m$"
+        }
+    }
+
+    Context 'Backwards compatibility' {
+        It 'classic mode renders unchanged when renderStyle is absent' {
+            # Arrange
+            $configPath = Join-Path $TestDrive 'pl-compat.json'
+            $config = @{
+                lines = @(@{
+                    fields = @(@{ type='static'; text='classic-text'; fg=$null; bg=$null })
+                })
+            } | ConvertTo-Json -Depth 10
+            Set-Content -Path $configPath -Value $config -Encoding UTF8
+
+            # Act
+            $result = Invoke-Main -ConfigPath $configPath -InputJson '{}'
+
+            # Assert: text appears, no Powerline separator glyph
+            $result | Should -Match 'classic-text'
+            $result | Should -Not -Match ([char]0xE0B0)
+        }
+    }
+
+    Context 'Get-VisibleWidth with Powerline glyphs' {
+        It 'counts Powerline glyph as width 1' {
+            # U+E0B0 is a BMP character — .NET string length = 1
+            $glyphStr = [char]0xE0B0
+            Get-VisibleWidth $glyphStr | Should -Be 1
+        }
+
+        It 'counts ANSI-wrapped Powerline glyph as width 1' {
+            $glyph  = [char]0xE0B0
+            $ansi   = "$([char]27)[38;2;255;0;0m${glyph}$([char]27)[0m"
+            Get-VisibleWidth $ansi | Should -Be 1
+        }
+    }
+}
+
 Describe 'Diagnostic Mode — Get-DiagEnvInfo is safe when no console handle exists' {
     # Subprocess-level: spawn pwsh with redirected stdio (no real console), dot-source the
     # script, call Get-DiagEnvInfo and emit the WindowWidth value.
@@ -2211,3 +2478,307 @@ Describe 'Diagnostic Mode — DiagMode=1 does not abort statusline render in pip
         }
     }
 }
+
+Describe 'Format-Ago' {
+    It 'renders a past timestamp with the default prefix' {
+        # Arrange
+        $pastTs = [DateTimeOffset]::UtcNow.AddMinutes(-72).AddSeconds(-30).ToUnixTimeSeconds()
+
+        # Act
+        $result = Format-Ago -UnixSeconds $pastTs -FormatOptions $null
+
+        # Assert
+        $result | Should -Be 'vor 1h 12m'
+    }
+
+    It 'renders a future timestamp with the default prefix' {
+        # Arrange
+        $futureTs = [DateTimeOffset]::UtcNow.AddMinutes(72).AddSeconds(30).ToUnixTimeSeconds()
+
+        # Act
+        $result = Format-Ago -UnixSeconds $futureTs -FormatOptions $null
+
+        # Assert
+        $result | Should -Be 'in 1h 12m'
+    }
+
+    It 'renders nowLabel below the 60 second threshold' {
+        # Arrange
+        $justNow = [DateTimeOffset]::UtcNow.AddSeconds(-30).ToUnixTimeSeconds()
+
+        # Act
+        $result = Format-Ago -UnixSeconds $justNow -FormatOptions $null
+
+        # Assert
+        $result | Should -Be 'gerade eben'
+    }
+
+    It 'renders days for a timestamp older than 24 hours' {
+        # Arrange
+        $oldTs = [DateTimeOffset]::UtcNow.AddHours(-26).AddMinutes(-5).AddSeconds(-30).ToUnixTimeSeconds()
+
+        # Act
+        $result = Format-Ago -UnixSeconds $oldTs -FormatOptions $null
+
+        # Assert
+        $result | Should -Be 'vor 1d 2h 5m'
+    }
+
+    It 'honors custom past labels including an empty prefix' {
+        # Arrange
+        $pastTs = [DateTimeOffset]::UtcNow.AddMinutes(-72).AddSeconds(-30).ToUnixTimeSeconds()
+        $opts   = [PSCustomObject]@{ pastPrefix = ''; pastSuffix = ' ago' }
+
+        # Act
+        $result = Format-Ago -UnixSeconds $pastTs -FormatOptions $opts
+
+        # Assert — an empty prefix must not fall back to the default 'vor '
+        $result | Should -Be '1h 12m ago'
+    }
+
+    It 'honors a custom nowLabel' {
+        # Arrange
+        $justNow = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+        $opts    = [PSCustomObject]@{ nowLabel = 'just now' }
+
+        # Act
+        $result = Format-Ago -UnixSeconds $justNow -FormatOptions $opts
+
+        # Assert
+        $result | Should -Be 'just now'
+    }
+
+    It 'falls back to defaults for labels not present in formatOptions' {
+        # Arrange
+        $futureTs = [DateTimeOffset]::UtcNow.AddMinutes(72).AddSeconds(30).ToUnixTimeSeconds()
+        $opts     = [PSCustomObject]@{ pastPrefix = 'seit ' }
+
+        # Act
+        $result = Format-Ago -UnixSeconds $futureTs -FormatOptions $opts
+
+        # Assert
+        $result | Should -Be 'in 1h 12m'
+    }
+}
+
+Describe 'Format-FieldValue ago and null timestamps' {
+    It 'routes unix_timestamp format ago to Format-Ago' {
+        # Arrange
+        $pastTs = [DateTimeOffset]::UtcNow.AddMinutes(-72).AddSeconds(-30).ToUnixTimeSeconds()
+
+        # Act
+        $result = Format-FieldValue -Value $pastTs -DataType 'unix_timestamp' -Format 'ago' -FormatOptions $null
+
+        # Assert
+        $result | Should -Be 'vor 1h 12m'
+    }
+
+    It 'returns empty string for a null unix_timestamp instead of epoch 0' {
+        # Act
+        $result = Format-FieldValue -Value $null -DataType 'unix_timestamp' -Format 'local_datetime' -FormatOptions $null
+
+        # Assert
+        $result | Should -Be ''
+    }
+
+    It 'returns empty string for a null unix_timestamp in countdown format' {
+        # Act
+        $result = Format-FieldValue -Value $null -DataType 'unix_timestamp' -Format 'short' -FormatOptions $null
+
+        # Assert
+        $result | Should -Be ''
+    }
+}
+
+Describe 'Truncate-Text' {
+    It 'returns the value unchanged when shorter than the limit' {
+        Truncate-Text -Value 'abc' -MaxLength 10 | Should -Be 'abc'
+    }
+
+    It 'returns the value unchanged when exactly at the limit' {
+        Truncate-Text -Value 'abcde' -MaxLength 5 | Should -Be 'abcde'
+    }
+
+    It 'truncates and appends an ellipsis when longer than the limit' {
+        # Act
+        $result = Truncate-Text -Value '326b3063-783f-4b81' -MaxLength 9
+
+        # Assert — result length equals MaxLength, last char is the ellipsis
+        $result | Should -Be ('326b3063' + [char]0x2026)
+        $result.Length | Should -Be 9
+    }
+
+    It 'returns just the ellipsis for MaxLength 1' {
+        Truncate-Text -Value 'abcdef' -MaxLength 1 | Should -Be ([string][char]0x2026)
+    }
+
+    It 'returns the value unchanged for MaxLength 0' {
+        Truncate-Text -Value 'abcdef' -MaxLength 0 | Should -Be 'abcdef'
+    }
+}
+
+Describe 'Get-FieldRawValue' {
+    It 'scales prompt_cache.hit_ratio from ratio to percentage' {
+        # Arrange
+        $data = [PSCustomObject]@{ prompt_cache = [PSCustomObject]@{ hit_ratio = 0.6701693342611923 } }
+
+        # Act / Assert
+        Get-FieldRawValue $data 'prompt_cache.hit_ratio' | Should -Be 67.0
+    }
+
+    It 'returns null for a missing hit_ratio rather than 0' {
+        # Arrange
+        $data = [PSCustomObject]@{ prompt_cache = [PSCustomObject]@{} }
+
+        # Act / Assert
+        Get-FieldRawValue $data 'prompt_cache.hit_ratio' | Should -BeNullOrEmpty
+    }
+
+    It 'returns the element count for workspace.added_dirs' {
+        # Arrange
+        $data = [PSCustomObject]@{ workspace = [PSCustomObject]@{ added_dirs = @('/a', '/b') } }
+
+        # Act / Assert
+        Get-FieldRawValue $data 'workspace.added_dirs' | Should -Be 2
+    }
+
+    It 'passes other keys through unchanged' {
+        # Arrange
+        $data = [PSCustomObject]@{ prompt_cache = [PSCustomObject]@{ ttl = '1h' } }
+
+        # Act / Assert
+        Get-FieldRawValue $data 'prompt_cache.ttl' | Should -Be '1h'
+    }
+}
+
+Describe 'Compute-DerivedFields cache_efficiency source' {
+    It 'prefers prompt_cache.hit_ratio over the self-computed formula' {
+        # Arrange — the two sources disagree on purpose so the winner is unambiguous
+        $data = [PSCustomObject]@{
+            context_window = [PSCustomObject]@{
+                total_input_tokens = 1000
+                current_usage      = [PSCustomObject]@{ cache_read_input_tokens = 100 }
+            }
+            prompt_cache = [PSCustomObject]@{ hit_ratio = 0.734 }
+        }
+
+        # Act
+        Compute-DerivedFields -Data $data
+
+        # Assert
+        $data.context_window.cache_efficiency | Should -Be 73.4
+    }
+
+    It 'falls back to the token ratio when prompt_cache is absent' {
+        # Arrange
+        $data = [PSCustomObject]@{
+            context_window = [PSCustomObject]@{
+                total_input_tokens = 1000
+                current_usage      = [PSCustomObject]@{ cache_read_input_tokens = 250 }
+            }
+        }
+
+        # Act
+        Compute-DerivedFields -Data $data
+
+        # Assert
+        $data.context_window.cache_efficiency | Should -Be 25.0
+    }
+
+    It 'leaves cache_efficiency unset when neither source is available' {
+        # Arrange
+        $data = [PSCustomObject]@{ context_window = [PSCustomObject]@{ total_input_tokens = 0 } }
+
+        # Act
+        Compute-DerivedFields -Data $data
+
+        # Assert
+        $data.context_window.PSObject.Properties.Name | Should -Not -Contain 'cache_efficiency'
+    }
+}
+
+Describe 'Format-Field maxLength' {
+    BeforeAll {
+        # Earlier Describes blank out $script:PathKeys to isolate their assertions;
+        # these tests need the real list to tell path fields from ordinary strings.
+        $script:PathKeys = @(
+            'cwd', 'transcript_path', 'workspace.current_dir', 'workspace.project_dir',
+            'worktree.path', 'worktree.original_cwd', 'scratchpad_dir'
+        )
+    }
+
+    It 'truncates a non-path string field to maxLength' {
+        # Arrange
+        $field = [PSCustomObject]@{ type = 'field'; key = 'prompt_id'; dataType = 'string'; maxLength = 9 }
+        $data  = [PSCustomObject]@{ prompt_id = '326b3063-783f-4b81-a638-a34e564dbe2b' }
+
+        # Act
+        $result = Format-Field -Field $field -Data $data
+
+        # Assert
+        $result | Should -Be ('326b3063' + [char]0x2026)
+    }
+
+    It 'leaves a field untouched when maxLength is not set' {
+        # Arrange
+        $field = [PSCustomObject]@{ type = 'field'; key = 'prompt_id'; dataType = 'string' }
+        $data  = [PSCustomObject]@{ prompt_id = '326b3063-783f' }
+
+        # Act / Assert
+        Format-Field -Field $field -Data $data | Should -Be '326b3063-783f'
+    }
+
+    It 'ignores maxLength on path fields, where pathDepth is the shortening tool' {
+        # Arrange — a path field carrying both options must only honor pathDepth
+        $field = [PSCustomObject]@{
+            type = 'field'; key = 'scratchpad_dir'; dataType = 'string'
+            pathDepth = 2; maxLength = 5
+        }
+        $data = [PSCustomObject]@{ scratchpad_dir = 'C:\Users\Viper\AppData\scratchpad' }
+
+        # Act
+        $result = Format-Field -Field $field -Data $data
+
+        # Assert
+        $result | Should -Be '...\AppData\scratchpad'
+    }
+}
+
+Describe 'Format-Field prompt_cache fields' {
+    It 'renders hit_ratio as a percentage value' {
+        # Arrange
+        $field = [PSCustomObject]@{ type = 'field'; key = 'prompt_cache.hit_ratio'; dataType = 'number'; format = 'raw' }
+        $data  = [PSCustomObject]@{ prompt_cache = [PSCustomObject]@{ hit_ratio = 0.6701693342611923 } }
+
+        # Act / Assert
+        Format-Field -Field $field -Data $data | Should -Be '67'
+    }
+
+    It 'renders hit_ratio as a raw progress bar value scaled to 0-100' {
+        # Arrange
+        $field = [PSCustomObject]@{ type = 'progressbar'; key = 'prompt_cache.hit_ratio'; progressStyle = 'raw' }
+        $data  = [PSCustomObject]@{ prompt_cache = [PSCustomObject]@{ hit_ratio = 0.734 } }
+
+        # Act / Assert
+        Format-Field -Field $field -Data $data | Should -Be '73.4'
+    }
+
+    It 'renders a null last_miss_at as the unix_timestamp placeholder' {
+        # Arrange
+        $field = [PSCustomObject]@{ type = 'field'; key = 'prompt_cache.last_miss_at'; dataType = 'unix_timestamp'; format = 'ago' }
+        $data  = [PSCustomObject]@{ prompt_cache = [PSCustomObject]@{ last_miss_at = $null } }
+
+        # Act / Assert
+        Format-Field -Field $field -Data $data | Should -Be '--'
+    }
+
+    It 'renders warm as a checkmark' {
+        # Arrange
+        $field = [PSCustomObject]@{ type = 'field'; key = 'prompt_cache.warm'; dataType = 'bool'; format = 'checkmark' }
+        $data  = [PSCustomObject]@{ prompt_cache = [PSCustomObject]@{ warm = $true } }
+
+        # Act / Assert
+        Format-Field -Field $field -Data $data | Should -Be ([string][char]0x2713)
+    }
+}
+
