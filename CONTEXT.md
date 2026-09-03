@@ -21,6 +21,17 @@ A value the status line computes itself and injects into the payload before
 rendering, because Claude Code does not report it directly.
 _Avoid_: Computed field, virtual field
 
+## Model behavior
+
+**Effort Level**:
+The reasoning depth of the current turn — `low`, `medium`, `high`, `xhigh` or
+`max`. Read exclusively from the payload's `effort.level`, never from
+`settings.json`: Claude Code resolves the per-model `modelSettings.<model>.effortLevel`
+against the global `effortLevel` fallback and reports only the resolved value,
+including mid-session `/effort` changes. The key is absent when the active model
+has no effort parameter, which renders as an empty field.
+_Avoid_: Reasoning effort, thinking level, reading it from settings
+
 ## Tokens and caching
 
 **Context Window**:
