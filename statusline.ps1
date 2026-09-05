@@ -681,17 +681,35 @@ function Get-FieldRawValue {
     }
 }
 
+<#
+.SYNOPSIS
+    Renders one configured Field as an ANSI-colored string.
+.DESCRIPTION
+    Dispatches on Field.type (static, progressbar, effort, thinking_enabled,
+    new_fields_indicator, plain field) and applies the color priority chain
+    fgOverride > per-field theme > active theme > none.
+.PARAMETER Field
+    Field config object (type, key, dataType, format, colors, ...).
+.PARAMETER Data
+    Payload (PSCustomObject parsed from Claude Code's JSON input).
+.PARAMETER Context
+    Render Context from New-RenderContext (themes, thresholds, known keys, logging).
+.OUTPUTS
+    ANSI-formatted string, or '' when the Field renders nothing.
+#>
 function Format-Field {
     param(
         [PSCustomObject]$Field,
-        [PSCustomObject]$Data
+        [PSCustomObject]$Data,
+        [hashtable]$Context
     )
+    $ctx = Resolve-RenderContext $Context
 
     # Priority chain: fgOverride flag > field-specific theme > global theme > none.
     # Missing fgOverride is treated as false so the theme color applies.
-    $fieldTheme      = if ($Field.themeId -and $script:ThemesMap.ContainsKey($Field.themeId)) { $script:ThemesMap[$Field.themeId] } else { $null }
-    $effectiveFgTheme = if ($fieldTheme) { $fieldTheme.fieldFg } else { $script:ThemeFg }
-    $effectiveBgTheme = if ($fieldTheme) { $fieldTheme.fieldBg } else { $script:ThemeBg }
+    $fieldTheme      = if ($Field.themeId -and $ctx.ThemesMap.ContainsKey($Field.themeId)) { $ctx.ThemesMap[$Field.themeId] } else { $null }
+    $effectiveFgTheme = if ($fieldTheme) { $fieldTheme.fieldFg } else { $ctx.ThemeFg }
+    $effectiveBgTheme = if ($fieldTheme) { $fieldTheme.fieldBg } else { $ctx.ThemeBg }
     $fgIsOverride = [bool]$Field.fgOverride
     $bgIsOverride = [bool]$Field.bgOverride
     $effectiveFg  = if ($fgIsOverride) { $Field.fg } elseif ($effectiveFgTheme) { $effectiveFgTheme } else { $null }
@@ -730,7 +748,7 @@ function Format-Field {
 
             $bar = Format-ProgressBar -Value ([double]$value) -Style $effectiveStyle -Fg $Field.fg `
                                        -Brackets $effectiveBrackets -Charset $effectiveCharset `
-                                       -Thresholds $script:PbThresholds
+                                       -Thresholds $ctx.PbThresholds
             if ($Field.bg) { return "${bgAnsi}${bar}${script:AnsiReset}" }
             return $bar
         }
@@ -767,8 +785,7 @@ function Format-Field {
         }
         'effort_level' {
             # Deprecated: use field type 'effort' instead. Returns empty to avoid crashing old configs.
-            if (-not $script:DeprecationWarned) { $script:DeprecationWarned = [System.Collections.Generic.HashSet[string]]::new() }
-            if ($script:DeprecationWarned.Add('effort_level')) {
+            if ($ctx.DeprecationWarned.Add('effort_level')) {
                 try {
                     $logPath = Join-Path $PSScriptRoot 'statusline-error.log'
                     $ts = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
@@ -799,18 +816,18 @@ function Format-Field {
             return "${fgAnsi}${bgAnsi}${rendered}${resetAnsi}"
         }
         'new_fields_indicator' {
-            if (-not $script:KnownKeys) { return '' }
+            if (-not $ctx.KnownKeys) { return '' }
             $allKeys = Get-AllKeys $Data ''
-            $newKeys = $allKeys | Where-Object { $script:KnownKeys -notcontains $_ }
+            $newKeys = $allKeys | Where-Object { $ctx.KnownKeys -notcontains $_ }
             $count   = ($newKeys | Measure-Object).Count
             if ($count -eq 0) { return '' }
 
             # Log unknown key names to file when logging is enabled
-            if ($script:LogNewFields -and $script:NewFieldsLogPath) {
+            if ($ctx.LogNewFields -and $ctx.NewFieldsLogPath) {
                 $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
                 $keyList   = $newKeys -join ', '
                 try {
-                    "[$timestamp] $keyList" | Add-Content -Path $script:NewFieldsLogPath -Encoding UTF8
+                    "[$timestamp] $keyList" | Add-Content -Path $ctx.NewFieldsLogPath -Encoding UTF8
                 } catch {
                     # Silently ignore log write failure
                 }
@@ -919,6 +936,8 @@ function Get-PowerlineSeparator {
     PSCustomObject parsed from Claude Code's JSON input.
 .PARAMETER DefaultBg
     Hex color used when no field in the group has an explicit bg override.
+.PARAMETER Context
+    Render Context from New-RenderContext.
 .OUTPUTS
     PSCustomObject with properties: bg (hex string), body (ANSI string without separator).
 #>
@@ -926,8 +945,10 @@ function Build-PowerlineSegment {
     param(
         [array]$Group,
         [PSCustomObject]$Data,
-        [string]$DefaultBg
+        [string]$DefaultBg,
+        [hashtable]$Context
     )
+    $ctx = Resolve-RenderContext $Context
 
     # Segment bg = first field with an explicit bgOverride; fall back to defaultSegmentBg.
     $segBg = $null
@@ -936,20 +957,20 @@ function Build-PowerlineSegment {
     }
     if (-not $segBg) { $segBg = $DefaultBg }
 
-    $segBgAnsi   = ConvertTo-AnsiBg $segBg
-    $prevThemeBg = $script:ThemeBg
-    $script:ThemeBg = $segBg    # fields without explicit bg inherit the segment bg via theme path
+    $segBgAnsi = ConvertTo-AnsiBg $segBg
+    # Fields without explicit bg inherit the segment bg via the theme path. The segment
+    # gets its own copy of the Render Context so the caller's context stays untouched.
+    $segCtx = $ctx.Clone()
+    $segCtx.ThemeBg = $segBg
 
     $bodyParts = [System.Collections.Generic.List[string]]::new()
     foreach ($field in $Group) {
-        $out = Format-Field $field $Data
+        $out = Format-Field $field $Data -Context $segCtx
         if ($out) {
             # Re-assert segment bg before each field to recover from prior field's reset.
             $bodyParts.Add($segBgAnsi + $out)
         }
     }
-
-    $script:ThemeBg = $prevThemeBg
 
     return [PSCustomObject]@{ bg = $segBg; body = $bodyParts -join '' }
 }
@@ -966,16 +987,20 @@ function Build-PowerlineSegment {
     Array of line config objects in one alignment group.
 .PARAMETER Data
     PSCustomObject parsed from Claude Code JSON input.
+.PARAMETER Context
+    Render Context from New-RenderContext.
 .OUTPUTS
     Rendered string for all lines in this group, joined by newline.
 #>
 function Format-Line-Group-Powerline {
     param(
         [array]$Lines,
-        [PSCustomObject]$Data
+        [PSCustomObject]$Data,
+        [hashtable]$Context
     )
+    $ctx = Resolve-RenderContext $Context
 
-    $plConfig  = $script:PowerlineConfig
+    $plConfig  = $ctx.PowerlineConfig
     $separator = Get-PowerlineSeparator $plConfig
     $defaultBg = if ($plConfig -and $plConfig.defaultSegmentBg) { "$($plConfig.defaultSegmentBg)" } else { '#444444' }
 
@@ -989,7 +1014,7 @@ function Format-Line-Group-Powerline {
         $groups   = Build-Groups $line.fields
         $segments = [System.Collections.Generic.List[object]]::new()
         foreach ($group in $groups) {
-            $seg = Build-PowerlineSegment $group $Data $defaultBg
+            $seg = Build-PowerlineSegment $group $Data $defaultBg -Context $ctx
             # Only include segments with visible content (skip blank/empty groups)
             if ((Get-VisibleWidth $seg.body) -gt 0) { $segments.Add($seg) }
         }
@@ -1112,18 +1137,22 @@ function Build-LineGroups {
     Array of line config objects in one alignment group.
 .PARAMETER Data
     PSCustomObject parsed from Claude Code JSON input.
+.PARAMETER Context
+    Render Context from New-RenderContext.
 .OUTPUTS
     Rendered string for all lines in this group, joined by newline.
 #>
 function Format-Line-Group {
     param(
         [array]$Lines,
-        [PSCustomObject]$Data
+        [PSCustomObject]$Data,
+        [hashtable]$Context
     )
+    $ctx = Resolve-RenderContext $Context
 
-    # Dispatch to Powerline renderer when renderStyle is set globally
-    if ($script:RenderStyle -eq 'powerline') {
-        return Format-Line-Group-Powerline $Lines $Data
+    # Dispatch to Powerline renderer when renderStyle is set in the Render Context
+    if ($ctx.RenderStyle -eq 'powerline') {
+        return Format-Line-Group-Powerline $Lines $Data -Context $ctx
     }
 
     # Pass 1: render all groups for all lines, measure visible widths
@@ -1136,7 +1165,7 @@ function Format-Line-Group {
         $groups = Build-Groups $line.fields
         $renderedGroups = [System.Collections.Generic.List[string]]::new()
         foreach ($group in $groups) {
-            $rendered = ($group | ForEach-Object { Format-Field $_ $Data }) -join ''
+            $rendered = ($group | ForEach-Object { Format-Field $_ $Data -Context $ctx }) -join ''
             $renderedGroups.Add($rendered)
         }
         $allLineGroups.Add($renderedGroups.ToArray())
@@ -1194,20 +1223,24 @@ function Format-Line-Group {
     Array of line config objects (each with a .fields array).
 .PARAMETER Data
     PSCustomObject parsed from Claude Code's JSON input.
+.PARAMETER Context
+    Render Context from New-RenderContext.
 .OUTPUTS
     All non-empty rendered lines joined by newline.
 #>
 function Format-Lines-Aligned {
     param(
         [array]$Lines,
-        [PSCustomObject]$Data
+        [PSCustomObject]$Data,
+        [hashtable]$Context
     )
     if (-not $Lines -or $Lines.Count -eq 0) { return '' }
+    $ctx = Resolve-RenderContext $Context
 
     $lineGroups = Build-LineGroups $Lines
     $parts = [System.Collections.Generic.List[string]]::new()
     foreach ($group in $lineGroups) {
-        $result = Format-Line-Group $group $Data
+        $result = Format-Line-Group $group $Data -Context $ctx
         if ($result) { $parts.Add($result) }
     }
     return $parts -join "`n"
@@ -1220,17 +1253,21 @@ function Format-Lines-Aligned {
     PSCustomObject with a 'fields' array.
 .PARAMETER Data
     PSCustomObject parsed from Claude Code's JSON input.
+.PARAMETER Context
+    Render Context from New-RenderContext.
 .OUTPUTS
     ANSI-formatted string for one status bar line.
 #>
 function Format-Line {
     param(
         [PSCustomObject]$Line,
-        [PSCustomObject]$Data
+        [PSCustomObject]$Data,
+        [hashtable]$Context
     )
     if (-not $Line.fields -or $Line.fields.Count -eq 0) { return '' }
+    $ctx = Resolve-RenderContext $Context
 
-    return ($Line.fields | ForEach-Object { Format-Field $_ $Data }) -join ''
+    return ($Line.fields | ForEach-Object { Format-Field $_ $Data -Context $ctx }) -join ''
 }
 
 <#
@@ -1419,6 +1456,39 @@ function New-RenderContext {
 
 <#
 .SYNOPSIS
+    Migration shim: returns the given Render Context or a snapshot of the legacy script-scope globals.
+.DESCRIPTION
+    TODO(render-context): remove once every caller passes -Context explicitly and the
+    script-scope globals are gone. Exists only so the rendering chain can be converted
+    one caller at a time while the test suite stays green.
+.PARAMETER Context
+    Render Context from New-RenderContext, or $null.
+.OUTPUTS
+    Hashtable with the Render Context keys.
+#>
+function Resolve-RenderContext {
+    param(
+        [hashtable]$Context
+    )
+    if ($Context) { return $Context }
+
+    if (-not $script:DeprecationWarned) { $script:DeprecationWarned = [System.Collections.Generic.HashSet[string]]::new() }
+    return @{
+        ThemesMap         = $script:ThemesMap
+        ThemeFg           = $script:ThemeFg
+        ThemeBg           = $script:ThemeBg
+        PbThresholds      = $script:PbThresholds
+        KnownKeys         = $script:KnownKeys
+        LogNewFields      = $script:LogNewFields
+        NewFieldsLogPath  = $script:NewFieldsLogPath
+        RenderStyle       = $script:RenderStyle
+        PowerlineConfig   = $script:PowerlineConfig
+        DeprecationWarned = $script:DeprecationWarned
+    }
+}
+
+<#
+.SYNOPSIS
     Entry point. Reads config file and input JSON, renders all lines to stdout.
     Also persists the received payload to last-payload.json (next to the config file)
     for field discovery, and exposes config.knownKeys to $script:KnownKeys so that
@@ -1581,15 +1651,18 @@ function Invoke-Main {
     $script:RenderStyle     = if ($config.renderStyle) { "$($config.renderStyle)" } else { 'classic' }
     $script:PowerlineConfig = $config.powerline
 
+    # Build the Render Context once; the rendering chain receives it explicitly
+    $ctx = New-RenderContext -Config $config
+
     # Render each line — use two-pass column alignment unless explicitly disabled
     if ($config.columnAlignmentEnabled -ne $false) {
-        return Format-Lines-Aligned $config.lines $data
+        return Format-Lines-Aligned $config.lines $data -Context $ctx
     } else {
-        if ($script:RenderStyle -eq 'powerline') {
-            $output = $config.lines | ForEach-Object { Format-Line-Group-Powerline @($_) $data } | Where-Object { $_ -ne '' }
+        if ($ctx.RenderStyle -eq 'powerline') {
+            $output = $config.lines | ForEach-Object { Format-Line-Group-Powerline @($_) $data -Context $ctx } | Where-Object { $_ -ne '' }
             return $output -join "`n"
         }
-        $output = $config.lines | ForEach-Object { Format-Line $_ $data } | Where-Object { $_ -ne '' }
+        $output = $config.lines | ForEach-Object { Format-Line $_ $data -Context $ctx } | Where-Object { $_ -ne '' }
         return $output -join "`n"
     }
 }

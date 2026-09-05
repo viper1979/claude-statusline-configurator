@@ -2926,3 +2926,131 @@ Describe 'New-RenderContext' {
         $second.DeprecationWarned.Count | Should -Be 0
     }
 }
+
+Describe 'Render Context is passed explicitly' {
+    BeforeAll {
+        # Globals deliberately point away from the context values so a pass-through
+        # to script scope would be caught by the assertions below.
+        $script:ThemeFg   = $null
+        $script:ThemeBg   = $null
+        $script:ThemesMap = @{}
+        $script:KnownKeys = $null
+        $script:RenderStyle = 'classic'
+    }
+
+    It 'Format-Field colors a field with the ThemeFg of the given context' {
+        # Arrange
+        $ctx   = New-RenderContext -Config ([PSCustomObject]@{
+            activeTheme = 't'; themes = @([PSCustomObject]@{ id = 't'; fieldFg = '#ff0000' })
+        })
+        $field = [PSCustomObject]@{ type = 'static'; text = 'X' }
+
+        # Act
+        $result = Format-Field $field ([PSCustomObject]@{}) -Context $ctx
+
+        # Assert
+        $result | Should -Be "$([char]27)[38;2;255;0;0mX$([char]27)[0m"
+    }
+
+    It 'Format-Field resolves a per-field themeId through the context ThemesMap' {
+        # Arrange
+        $ctx   = New-RenderContext -Config ([PSCustomObject]@{
+            themes = @([PSCustomObject]@{ id = 'alt'; fieldFg = '#00ff00' })
+        })
+        $field = [PSCustomObject]@{ type = 'static'; text = 'X'; themeId = 'alt' }
+
+        # Act
+        $result = Format-Field $field ([PSCustomObject]@{}) -Context $ctx
+
+        # Assert
+        $result | Should -Match '38;2;0;255;0m'
+    }
+
+    It 'Format-Field detects new fields against the context KnownKeys' {
+        # Arrange
+        $ctx   = New-RenderContext -Config ([PSCustomObject]@{ knownKeys = @('version') })
+        $field = [PSCustomObject]@{ type = 'new_fields_indicator' }
+        $data  = [PSCustomObject]@{ version = '1'; surprise = 'x' }
+
+        # Act
+        $result = Format-Field $field $data -Context $ctx
+
+        # Assert
+        $result | Should -Not -BeNullOrEmpty
+    }
+
+    It 'Format-Field records the effort_level deprecation in the context, not in script scope' {
+        # Arrange
+        $ctx   = New-RenderContext -Config ([PSCustomObject]@{})
+        $field = [PSCustomObject]@{ type = 'effort_level' }
+        $script:DeprecationWarned = $null
+
+        # Act
+        Format-Field $field ([PSCustomObject]@{}) -Context $ctx | Out-Null
+
+        # Assert
+        $ctx.DeprecationWarned.Contains('effort_level') | Should -BeTrue
+        $script:DeprecationWarned | Should -BeNullOrEmpty
+    }
+
+    It 'Format-Field uses the context PbThresholds for color-coded progress bars' {
+        # Arrange
+        $ctx = New-RenderContext -Config ([PSCustomObject]@{
+            activeTheme = 't'
+            themes = @([PSCustomObject]@{ id = 't'; progressThresholds = @([PSCustomObject]@{ upTo = 100; fg = '#0000ff' }) })
+        })
+        $field = [PSCustomObject]@{ type = 'progressbar'; key = 'pct' }
+        $data  = [PSCustomObject]@{ pct = 10 }
+
+        # Act
+        $result = Format-Field $field $data -Context $ctx
+
+        # Assert
+        $result | Should -Match '38;2;0;0;255m'
+    }
+
+    It 'Build-PowerlineSegment lets fields inherit the segment bg without touching script scope' {
+        # Arrange
+        $ctx   = New-RenderContext -Config ([PSCustomObject]@{
+            activeTheme = 't'; themes = @([PSCustomObject]@{ id = 't'; fieldFg = '#ff0000' })
+        })
+        $group = @([PSCustomObject]@{ type = 'static'; text = 'A' })
+
+        # Act
+        $seg = Build-PowerlineSegment $group ([PSCustomObject]@{}) '#101010' -Context $ctx
+
+        # Assert
+        $seg.body        | Should -Match '48;2;16;16;16m'   # segment bg inherited by the field
+        $seg.body        | Should -Match '38;2;255;0;0m'    # fg taken from the context theme
+        $script:ThemeBg  | Should -BeNullOrEmpty
+        $ctx.ThemeBg     | Should -BeNullOrEmpty            # context itself was not mutated
+    }
+
+    It 'Format-Line-Group dispatches to Powerline based on the context RenderStyle' {
+        # Arrange
+        $ctx   = New-RenderContext -Config ([PSCustomObject]@{ renderStyle = 'powerline' })
+        $lines = @([PSCustomObject]@{ fields = @([PSCustomObject]@{ type = 'static'; text = 'A' }) })
+
+        # Act
+        $result = Format-Line-Group $lines ([PSCustomObject]@{}) -Context $ctx
+
+        # Assert
+        $result | Should -Match ([regex]::Escape([char]::ConvertFromUtf32(0xE0B0)))
+    }
+
+    It 'Format-Lines-Aligned and Format-Line forward the context to Format-Field' {
+        # Arrange
+        $ctx   = New-RenderContext -Config ([PSCustomObject]@{
+            activeTheme = 't'; themes = @([PSCustomObject]@{ id = 't'; fieldFg = '#ff0000' })
+        })
+        $line  = [PSCustomObject]@{ fields = @([PSCustomObject]@{ type = 'static'; text = 'A' }) }
+
+        # Act
+        $aligned = Format-Lines-Aligned @($line) ([PSCustomObject]@{}) -Context $ctx
+        $plain   = Format-Line $line ([PSCustomObject]@{}) -Context $ctx
+
+        # Assert
+        $aligned | Should -Match '38;2;255;0;0m'
+        $plain   | Should -Match '38;2;255;0;0m'
+    }
+}
