@@ -3005,3 +3005,65 @@ Describe 'Assert-RenderContext' {
         { Format-Field $field ([PSCustomObject]@{}) } | Should -Throw '*Render Context is required*'
     }
 }
+
+Describe 'Render Context Now' {
+    BeforeAll {
+        # A fixed instant so the time-relative formats become deterministic
+        $script:fixedNow = [DateTimeOffset]::FromUnixTimeSeconds(1757000000)
+    }
+
+    It 'stores an explicit -Now in the Render Context' {
+        # Arrange / Act
+        $ctx = New-RenderContext -Config ([PSCustomObject]@{}) -Now $script:fixedNow
+
+        # Assert
+        $ctx.Now | Should -Be $script:fixedNow
+    }
+
+    It 'defaults Now to the current UTC time' {
+        # Arrange
+        $before = [DateTimeOffset]::UtcNow
+
+        # Act
+        $ctx = New-RenderContext -Config ([PSCustomObject]@{})
+
+        # Assert
+        ($ctx.Now - $before).TotalSeconds | Should -BeGreaterOrEqual 0
+        ($ctx.Now - $before).TotalSeconds | Should -BeLessThan 5
+    }
+
+    It 'Format-Ago measures the distance from -Now instead of the wall clock' {
+        # Arrange
+        $pastTs = $script:fixedNow.AddMinutes(-72).AddSeconds(-30).ToUnixTimeSeconds()
+
+        # Act
+        $result = Format-Ago -UnixSeconds $pastTs -FormatOptions $null -Now $script:fixedNow
+
+        # Assert
+        $result | Should -Be 'vor 1h 12m'
+    }
+
+    It 'Format-FieldValue counts down a unix_timestamp from -Now' {
+        # Arrange
+        $futureTs = $script:fixedNow.AddHours(2).AddMinutes(5).AddSeconds(30).ToUnixTimeSeconds()
+
+        # Act
+        $result = Format-FieldValue -Value $futureTs -DataType 'unix_timestamp' -Format 'short' -Now $script:fixedNow
+
+        # Assert
+        $result | Should -Be '2h 5m'
+    }
+
+    It 'Format-Field renders an ago field relative to the Render Context Now' {
+        # Arrange
+        $ctx   = New-TestRenderContext @{ Now = $script:fixedNow }
+        $field = [PSCustomObject]@{ type = 'field'; key = 'prompt_cache.last_miss_at'; dataType = 'unix_timestamp'; format = 'ago' }
+        $data  = [PSCustomObject]@{ prompt_cache = [PSCustomObject]@{ last_miss_at = $script:fixedNow.AddMinutes(-72).AddSeconds(-30).ToUnixTimeSeconds() } }
+
+        # Act
+        $result = Format-Field -Field $field -Data $data -Context $ctx
+
+        # Assert
+        $result | Should -Be 'vor 1h 12m'
+    }
+}

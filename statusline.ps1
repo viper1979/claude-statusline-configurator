@@ -446,6 +446,9 @@ function Format-Duration {
     PSCustomObject with extra options. Used for bool custom format: trueLabel, falseLabel.
     For unix_timestamp custom format: customPattern (.NET DateTime format string).
     For unix_timestamp 'ago' format: pastPrefix, pastSuffix, futurePrefix, futureSuffix, nowLabel.
+.PARAMETER Now
+    The instant that countdown and 'ago' formats measure against. Defaults to UtcNow;
+    Format-Field passes the Render Context's Now so one render shares a single instant.
 .OUTPUTS
     Formatted string ready for display.
 #>
@@ -478,16 +481,19 @@ function Get-FormatOption {
     Epoch seconds of the event.
 .PARAMETER FormatOptions
     Optional PSCustomObject with pastPrefix, pastSuffix, futurePrefix, futureSuffix, nowLabel.
+.PARAMETER Now
+    The instant the distance is measured from. Defaults to UtcNow.
 .OUTPUTS
     Formatted string.
 #>
 function Format-Ago {
     param(
         [long]$UnixSeconds,
-        [object]$FormatOptions
+        [object]$FormatOptions,
+        [DateTimeOffset]$Now = [DateTimeOffset]::UtcNow
     )
 
-    $deltaSeconds = [long]([DateTimeOffset]::FromUnixTimeSeconds($UnixSeconds) - [DateTimeOffset]::UtcNow).TotalSeconds
+    $deltaSeconds = [long]([DateTimeOffset]::FromUnixTimeSeconds($UnixSeconds) - $Now).TotalSeconds
 
     if ([Math]::Abs($deltaSeconds) -lt $script:AgoNowThresholdSeconds) {
         return Get-FormatOption $FormatOptions 'nowLabel' $script:AgoDefaults.nowLabel
@@ -510,7 +516,8 @@ function Format-FieldValue {
         [object]$Value,
         [string]$DataType,
         [string]$Format,
-        [object]$FormatOptions
+        [object]$FormatOptions,
+        [DateTimeOffset]$Now = [DateTimeOffset]::UtcNow
     )
 
     # A null timestamp means "the event never happened" (e.g. prompt_cache.last_miss_at
@@ -530,7 +537,7 @@ function Format-FieldValue {
     switch ($DataType) {
         'unix_timestamp' {
             if ($Format -eq 'ago') {
-                return Format-Ago -UnixSeconds ([long]$Value) -FormatOptions $FormatOptions
+                return Format-Ago -UnixSeconds ([long]$Value) -FormatOptions $FormatOptions -Now $Now
             }
             if ($Format -in @('local_time', 'local_datetime', 'local_short', 'custom')) {
                 $local = [DateTimeOffset]::FromUnixTimeSeconds([long]$Value).ToLocalTime().DateTime
@@ -548,7 +555,7 @@ function Format-FieldValue {
                 return $local.ToString($pattern, [System.Globalization.CultureInfo]::CurrentCulture)
             }
             if ($Format -eq 'raw') { return "$Value" }
-            $remaining    = [DateTimeOffset]::FromUnixTimeSeconds([long]$Value) - [DateTimeOffset]::UtcNow
+            $remaining    = [DateTimeOffset]::FromUnixTimeSeconds([long]$Value) - $Now
             $totalSeconds = [long]$remaining.TotalSeconds
             return Format-Duration -TotalSeconds $totalSeconds -Format $Format
         }
@@ -862,7 +869,7 @@ function Format-Field {
             }
             $formatted = if ($Field.dataType) {
                 try {
-                    Format-FieldValue -Value $value -DataType $Field.dataType -Format $Field.format -FormatOptions $Field.formatOptions
+                    Format-FieldValue -Value $value -DataType $Field.dataType -Format $Field.format -FormatOptions $Field.formatOptions -Now $ctx.Now
                 } catch {
                     # Misconfigured dataType for this field — return raw value rather than crashing
                     "$value"
@@ -1403,14 +1410,18 @@ function Compute-DerivedFields {
       RenderStyle       - 'classic' or 'powerline'
       PowerlineConfig   - config.powerline, or $null
       DeprecationWarned - HashSet[string] of deprecation warnings already written this render
+      Now               - [DateTimeOffset] instant that time-relative formats measure against
 .PARAMETER Config
     Parsed statusline-config.json (PSCustomObject).
+.PARAMETER Now
+    The render's instant. Defaults to UtcNow; tests pass a fixed value for determinism.
 .OUTPUTS
     Hashtable with the keys listed above.
 #>
 function New-RenderContext {
     param(
-        [PSCustomObject]$Config
+        [PSCustomObject]$Config,
+        [DateTimeOffset]$Now = [DateTimeOffset]::UtcNow
     )
 
     $themesMap = @{}
@@ -1446,6 +1457,7 @@ function New-RenderContext {
         RenderStyle       = if ($Config.renderStyle) { "$($Config.renderStyle)" } else { 'classic' }
         PowerlineConfig   = $Config.powerline
         DeprecationWarned = [System.Collections.Generic.HashSet[string]]::new()
+        Now               = $Now
     }
 }
 
