@@ -696,6 +696,30 @@ function formatFieldValue(value, dataType, format, formatOptions, nowSeconds = n
   }
 }
 
+// What a missing value shows per data type when the field has no explicit placeholder.
+// Mirrors the per-dataType defaults in Format-Field; types not listed hide the field.
+const PLACEHOLDER_BY_DATATYPE = {
+  currency:       '$0.00',
+  number:         '0',
+  string:         '--',
+  duration_ms:    '--',
+  unix_timestamp: '--',
+};
+
+/**
+ * Decides what a field renders when its payload value is missing or empty. Mirrors the
+ * chain in Format-Field: field.placeholder > worktree.branch 'none' > per-dataType default > hide.
+ * @param {object} field - field config object
+ * @returns {{placeholder: string}|{value: string}} a placeholder to show verbatim ('' hides
+ *   the field), or a substitute value that continues through the normal formatting
+ */
+function resolveMissingValue(field) {
+  // Explicitly configured placeholder (null = not set; '' = hide field)
+  if (field.placeholder !== undefined && field.placeholder !== null) return { placeholder: String(field.placeholder) };
+  if (field.key === 'worktree.branch') return { value: 'none' };
+  return { placeholder: PLACEHOLDER_BY_DATATYPE[field.dataType] ?? '' };
+}
+
 /**
  * Formats a field's value for display in the preview (returns HTML string with inline styles).
  * @param {object} field - field config object from state
@@ -750,11 +774,16 @@ function renderFieldHtml(field, data, previewTheme = null, previewOverride = nul
   }
 
   // Use previewOverride as raw value for progressbar when set (e.g. from edit dialog preview)
-  const raw = (field.type === 'progressbar' && previewOverride !== null)
+  let raw = (field.type === 'progressbar' && previewOverride !== null)
     ? previewOverride
     : getFieldRawValue(data, field.key);
-  if (raw === undefined || raw === null || raw === '') {
-    return '';
+  if (raw === undefined || raw === null || String(raw) === '') {
+    if (field.type === 'progressbar') return '';
+    const missing = resolveMissingValue(field);
+    if (missing.placeholder !== undefined) {
+      return missing.placeholder === '' ? '' : `<span style="${style}">${escapeHtml(missing.placeholder)}</span>`;
+    }
+    raw = missing.value;
   }
 
   if (field.type === 'progressbar') {
