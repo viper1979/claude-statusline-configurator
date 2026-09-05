@@ -28,6 +28,20 @@ the known payload keys, and the new-fields logging settings. One value per rende
 before the first Field is rendered and never changed while rendering.
 _Avoid_: Theme context, render settings, script scope, globals
 
+**Render Adapter**:
+One of the two implementations that turn a Field into output: `statusline.ps1`
+renders ANSI for the real status line, the configurator's preview renders HTML.
+They share no code, only behavior. The PowerShell adapter is the reference: when
+the two disagree, the preview is wrong.
+_Avoid_: Renderer, engine, shared runtime, "the JS port"
+
+**Conformance Fixture**:
+A JSON file under `tests/conformance/` holding inputs only — a Field configuration,
+a payload excerpt, one fixed `now` — and no expected text. At test time the
+PowerShell adapter renders the expected text and the preview adapter must match it
+character for character. Storing an expected value would create a second truth.
+_Avoid_: Golden file, snapshot, expected output
+
 ## Model behavior
 
 **Effort Level**:
