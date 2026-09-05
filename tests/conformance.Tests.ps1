@@ -58,3 +58,53 @@ Describe 'Conformance block guards' {
         }
     }
 }
+
+# One Describe per Conformance Fixture file, one It per case. The fixture holds inputs
+# only: the PowerShell adapter renders the expected text at test time, the harness
+# renders the same case through the preview adapter, and both visible texts must match.
+BeforeDiscovery {
+    $fixtureFiles = Get-ChildItem -Path (Join-Path $PSScriptRoot 'conformance') -Filter '*.fixture.json' |
+        ForEach-Object {
+            $doc = Get-Content -Path $_.FullName -Raw -Encoding UTF8 | ConvertFrom-Json
+            @{
+                FixtureName = $_.BaseName -replace '\.fixture$', ''
+                FixturePath = $_.FullName
+                Now         = [long]$doc.now
+                Cases       = @($doc.cases | ForEach-Object { @{ Name = $_.name; Field = $_.field; Payload = $_.payload } })
+            }
+        }
+}
+
+Describe 'Render Adapter conformance: <FixtureName>' -ForEach $fixtureFiles {
+    BeforeAll {
+        $ansiPattern = "`e\[[0-9;]*m"
+        $script:renderContext = New-RenderContext -Config ([PSCustomObject]@{}) -Now ([DateTimeOffset]::FromUnixTimeSeconds($Now))
+
+        # One Node process per fixture file; results keyed by case name.
+        $harnessOutput = & node $script:HarnessPath $script:HtmlPath $FixturePath 2>&1
+        if ($LASTEXITCODE -ne 0) { throw "render-harness failed for ${FixtureName}: $harnessOutput" }
+        $script:previewTexts = @{}
+        foreach ($entry in ($harnessOutput -join "`n" | ConvertFrom-Json)) {
+            $script:previewTexts[$entry.name] = $entry.text
+        }
+
+        # Renders a case through the reference adapter and strips the ANSI color codes.
+        function Get-ReferenceText {
+            param($Field, $Payload)
+            $rendered = Format-Field -Field $Field -Data $Payload -Context $script:renderContext
+            return [regex]::Replace("$rendered", $ansiPattern, '')
+        }
+    }
+
+    It '<Name>' -ForEach $Cases {
+        # Arrange
+        $expected = Get-ReferenceText -Field $Field -Payload $Payload
+
+        # Act
+        $actual = $script:previewTexts[$Name]
+
+        # Assert
+        $script:previewTexts.ContainsKey($Name) | Should -BeTrue -Because 'the harness must render every case'
+        $actual | Should -BeExactly $expected
+    }
+}

@@ -540,10 +540,11 @@ function agoLabel(formatOptions, name) {
  * Renders a unix timestamp as elapsed/upcoming duration. Mirrors Format-Ago in statusline.ps1.
  * @param {number} unixSeconds
  * @param {object|null} formatOptions - pastPrefix/pastSuffix/futurePrefix/futureSuffix/nowLabel
+ * @param {number|null} nowSeconds - render instant in epoch seconds; defaults to the wall clock
  * @returns {string}
  */
-function formatAgo(unixSeconds, formatOptions) {
-  const delta = unixSeconds - Math.floor(Date.now() / 1000);
+function formatAgo(unixSeconds, formatOptions, nowSeconds = null) {
+  const delta = unixSeconds - (nowSeconds ?? Math.floor(Date.now() / 1000));
   if (Math.abs(delta) < AGO_NOW_THRESHOLD_SECONDS) return agoLabel(formatOptions, 'nowLabel');
 
   const abs     = Math.abs(delta);
@@ -596,9 +597,10 @@ function getFieldRawValue(data, key) {
  * @param {string} dataType      - 'string'|'currency'|'number'|'bool'|'duration_ms'|'unix_timestamp'
  * @param {string|null} format   - type-specific format string
  * @param {object|null} formatOptions - extra options (e.g. trueLabel/falseLabel for bool/custom)
+ * @param {number|null} nowSeconds - render instant in epoch seconds for the time-relative formats; defaults to the wall clock
  * @returns {string}
  */
-function formatFieldValue(value, dataType, format, formatOptions) {
+function formatFieldValue(value, dataType, format, formatOptions, nowSeconds = null) {
   switch (dataType) {
     case 'currency': {
       const n = parseFloat(value);
@@ -630,7 +632,7 @@ function formatFieldValue(value, dataType, format, formatOptions) {
     }
     case 'unix_timestamp': {
       if (value === null || value === undefined) return '';
-      if (format === 'ago') return formatAgo(Number(value), formatOptions);
+      if (format === 'ago') return formatAgo(Number(value), formatOptions, nowSeconds);
       if (['local_time', 'local_datetime', 'local_short', 'custom'].includes(format)) {
         const date = new Date(Number(value) * 1000);
         const patternMap = {
@@ -641,7 +643,7 @@ function formatFieldValue(value, dataType, format, formatOptions) {
         const pattern = patternMap[format] ?? (formatOptions?.customPattern || '');
         return pattern ? formatDotNetPattern(date, pattern) : String(value);
       }
-      const now        = Math.floor(Date.now() / 1000);
+      const now        = nowSeconds ?? Math.floor(Date.now() / 1000);
       const diff       = Math.max(0, Number(value) - now);
       const totalHours = Math.floor(diff / 3600);
       const days       = Math.floor(diff / 86400);
@@ -688,8 +690,9 @@ function formatFieldValue(value, dataType, format, formatOptions) {
  *   fallback colors when the field has no active fgOverride/bgOverride flag set
  * @param {number|null} previewOverride - when non-null and field.type === 'progressbar',
  *   used as the raw value instead of reading from data. Used by the edit dialog preview.
+ * @param {number|null} nowSeconds - render instant in epoch seconds; null uses the wall clock
  */
-function renderFieldHtml(field, data, previewTheme = null, previewOverride = null) {
+function renderFieldHtml(field, data, previewTheme = null, previewOverride = null, nowSeconds = null) {
   const fgIsOverride = field.fgOverride ?? (field.fg !== null && field.fg !== undefined);
   const bgIsOverride = field.bgOverride ?? (field.bg !== null && field.bg !== undefined);
   const fg = fgIsOverride ? field.fg : (previewTheme?.fieldFg ?? null);
@@ -756,7 +759,7 @@ function renderFieldHtml(field, data, previewTheme = null, previewOverride = nul
 
   // type === 'field' — apply dataType formatting if configured
   let displayValue = field.dataType
-    ? formatFieldValue(raw, field.dataType, field.format, field.formatOptions)
+    ? formatFieldValue(raw, field.dataType, field.format, field.formatOptions, nowSeconds)
     : String(raw);
   // Path fields shorten by segment count, every other field by character count —
   // one tool per field kind, never both on the same field.

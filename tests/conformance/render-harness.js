@@ -63,6 +63,36 @@ function getBlockFunction(context, name) {
 }
 
 /**
+ * Reduces a rendered HTML snippet to its visible text: tags removed, the five
+ * entities escapeHtml() produces turned back into characters. Tags go first so an
+ * escaped '<' in the content can never be mistaken for markup.
+ * @param {string} html
+ * @returns {string}
+ */
+function htmlToText(html) {
+  return html
+    .replace(/<[^>]*>/g, '')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, '&');
+}
+
+/**
+ * Escapes every non-ASCII character as \uXXXX so the JSON survives any console
+ * encoding between Node and PowerShell.
+ * @param {string} json
+ * @returns {string}
+ */
+function toAsciiJson(json) {
+  // split('') yields UTF-16 code units, which is exactly what JSON \uXXXX escapes encode.
+  return json.split('').map(ch => ch.charCodeAt(0) > 126
+    ? '\\u' + ch.charCodeAt(0).toString(16).padStart(4, '0')
+    : ch).join('');
+}
+
+/**
  * --check mode: proves the block evaluates DOM-free and lists the required functions found.
  * @param {string} htmlPath
  */
@@ -70,6 +100,25 @@ function runCheck(htmlPath) {
   const context = evaluateBlock(extractBlock(htmlPath));
   const functions = REQUIRED_FUNCTIONS.filter(name => typeof getBlockFunction(context, name) === 'function');
   process.stdout.write(JSON.stringify({ functions }));
+}
+
+/**
+ * Render mode: renders every case of a Conformance Fixture through the preview adapter.
+ * Writes [{name, text}] to stdout.
+ * @param {string} htmlPath
+ * @param {string} fixturePath
+ */
+function runFixture(htmlPath, fixturePath) {
+  const fixture = JSON.parse(fs.readFileSync(fixturePath, 'utf8'));
+  const context = evaluateBlock(extractBlock(htmlPath));
+  const renderFieldHtml = getBlockFunction(context, 'renderFieldHtml');
+  if (typeof renderFieldHtml !== 'function') throw new Error('block does not define renderFieldHtml');
+  const nowSeconds = fixture.now ?? null;
+  const results = fixture.cases.map(c => ({
+    name: c.name,
+    text: htmlToText(renderFieldHtml(c.field, c.payload, null, null, nowSeconds)),
+  }));
+  process.stdout.write(toAsciiJson(JSON.stringify(results)));
 }
 
 /**
@@ -82,7 +131,11 @@ function main() {
       runCheck(args[1]);
       return;
     }
-    throw new Error('render mode not implemented yet');
+    if (args.length === 2) {
+      runFixture(args[0], args[1]);
+      return;
+    }
+    throw new Error('usage: render-harness.js --check <html> | <html> <fixture.json>');
   } catch (error) {
     process.stderr.write(`render-harness: ${error.message}\n`);
     process.exit(1);

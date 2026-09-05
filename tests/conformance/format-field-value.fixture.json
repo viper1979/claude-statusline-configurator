@@ -1,0 +1,764 @@
+{
+  "_comment": "Format-FieldValue vs formatFieldValue. Month names (MMM/MMMM) are culture-dependent on both platforms and deliberately not covered.",
+  "now": 1757000000,
+  "cases": [
+    {
+      "name": "number auto below thousand stays plain",
+      "field": {
+        "type": "field",
+        "key": "cost.total_lines_added",
+        "dataType": "number",
+        "format": "auto"
+      },
+      "payload": {
+        "cost": {
+          "total_lines_added": 999
+        }
+      }
+    },
+    {
+      "name": "number auto thousands use K",
+      "field": {
+        "type": "field",
+        "key": "cost.total_lines_added",
+        "dataType": "number",
+        "format": "auto"
+      },
+      "payload": {
+        "cost": {
+          "total_lines_added": 1500
+        }
+      }
+    },
+    {
+      "name": "number auto rounds half to even like [math]::Round",
+      "field": {
+        "type": "field",
+        "key": "cost.total_lines_added",
+        "dataType": "number",
+        "format": "auto"
+      },
+      "payload": {
+        "cost": {
+          "total_lines_added": 2500
+        }
+      }
+    },
+    {
+      "name": "number auto millions use M",
+      "field": {
+        "type": "field",
+        "key": "cost.total_lines_added",
+        "dataType": "number",
+        "format": "auto"
+      },
+      "payload": {
+        "cost": {
+          "total_lines_added": 2400000
+        }
+      }
+    },
+    {
+      "name": "number auto billions use B",
+      "field": {
+        "type": "field",
+        "key": "cost.total_lines_added",
+        "dataType": "number",
+        "format": "auto"
+      },
+      "payload": {
+        "cost": {
+          "total_lines_added": 3000000000
+        }
+      }
+    },
+    {
+      "name": "number deprecated k falls back to auto",
+      "field": {
+        "type": "field",
+        "key": "cost.total_lines_added",
+        "dataType": "number",
+        "format": "k"
+      },
+      "payload": {
+        "cost": {
+          "total_lines_added": 12000
+        }
+      }
+    },
+    {
+      "name": "number deprecated m falls back to auto",
+      "field": {
+        "type": "field",
+        "key": "cost.total_lines_added",
+        "dataType": "number",
+        "format": "m"
+      },
+      "payload": {
+        "cost": {
+          "total_lines_added": 12000
+        }
+      }
+    },
+    {
+      "name": "number raw keeps the value unrounded",
+      "field": {
+        "type": "field",
+        "key": "cost.total_lines_added",
+        "dataType": "number",
+        "format": "raw"
+      },
+      "payload": {
+        "cost": {
+          "total_lines_added": 1234.5
+        }
+      }
+    },
+    {
+      "name": "number raw integer",
+      "field": {
+        "type": "field",
+        "key": "cost.total_lines_added",
+        "dataType": "number",
+        "format": "raw"
+      },
+      "payload": {
+        "cost": {
+          "total_lines_added": 1234
+        }
+      }
+    },
+    {
+      "name": "number without format keeps the value unrounded",
+      "field": {
+        "type": "field",
+        "key": "cost.total_lines_added",
+        "dataType": "number"
+      },
+      "payload": {
+        "cost": {
+          "total_lines_added": 1234.5
+        }
+      }
+    },
+    {
+      "name": "currency rounds to two decimals",
+      "field": {
+        "type": "field",
+        "key": "cost.total_cost_usd",
+        "dataType": "currency"
+      },
+      "payload": {
+        "cost": {
+          "total_cost_usd": 3.14159
+        }
+      }
+    },
+    {
+      "name": "currency pads integer to two decimals",
+      "field": {
+        "type": "field",
+        "key": "cost.total_cost_usd",
+        "dataType": "currency"
+      },
+      "payload": {
+        "cost": {
+          "total_cost_usd": 10
+        }
+      }
+    },
+    {
+      "name": "currency accepts numeric string",
+      "field": {
+        "type": "field",
+        "key": "cost.total_cost_usd",
+        "dataType": "currency"
+      },
+      "payload": {
+        "cost": {
+          "total_cost_usd": "1.5"
+        }
+      }
+    },
+    {
+      "name": "bool yes_no true",
+      "field": {
+        "type": "field",
+        "key": "thinking.enabled",
+        "dataType": "bool",
+        "format": "yes_no"
+      },
+      "payload": {
+        "thinking": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "bool yes_no false",
+      "field": {
+        "type": "field",
+        "key": "thinking.enabled",
+        "dataType": "bool",
+        "format": "yes_no"
+      },
+      "payload": {
+        "thinking": {
+          "enabled": false
+        }
+      }
+    },
+    {
+      "name": "bool checkmark true",
+      "field": {
+        "type": "field",
+        "key": "thinking.enabled",
+        "dataType": "bool",
+        "format": "checkmark"
+      },
+      "payload": {
+        "thinking": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "bool checkmark false",
+      "field": {
+        "type": "field",
+        "key": "thinking.enabled",
+        "dataType": "bool",
+        "format": "checkmark"
+      },
+      "payload": {
+        "thinking": {
+          "enabled": false
+        }
+      }
+    },
+    {
+      "name": "bool custom labels true",
+      "field": {
+        "type": "field",
+        "key": "thinking.enabled",
+        "dataType": "bool",
+        "format": "custom",
+        "formatOptions": {
+          "trueLabel": "an",
+          "falseLabel": "aus"
+        }
+      },
+      "payload": {
+        "thinking": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "bool custom labels false",
+      "field": {
+        "type": "field",
+        "key": "thinking.enabled",
+        "dataType": "bool",
+        "format": "custom",
+        "formatOptions": {
+          "trueLabel": "an",
+          "falseLabel": "aus"
+        }
+      },
+      "payload": {
+        "thinking": {
+          "enabled": false
+        }
+      }
+    },
+    {
+      "name": "bool true_false default true",
+      "field": {
+        "type": "field",
+        "key": "thinking.enabled",
+        "dataType": "bool",
+        "format": "true_false"
+      },
+      "payload": {
+        "thinking": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "bool without format false",
+      "field": {
+        "type": "field",
+        "key": "thinking.enabled",
+        "dataType": "bool"
+      },
+      "payload": {
+        "thinking": {
+          "enabled": false
+        }
+      }
+    },
+    {
+      "name": "duration_ms short below one hour",
+      "field": {
+        "type": "field",
+        "key": "cost.total_duration_ms",
+        "dataType": "duration_ms",
+        "format": "short"
+      },
+      "payload": {
+        "cost": {
+          "total_duration_ms": 330000
+        }
+      }
+    },
+    {
+      "name": "duration_ms short with hours",
+      "field": {
+        "type": "field",
+        "key": "cost.total_duration_ms",
+        "dataType": "duration_ms",
+        "format": "short"
+      },
+      "payload": {
+        "cost": {
+          "total_duration_ms": 7500000
+        }
+      }
+    },
+    {
+      "name": "duration_ms short with days",
+      "field": {
+        "type": "field",
+        "key": "cost.total_duration_ms",
+        "dataType": "duration_ms",
+        "format": "short"
+      },
+      "payload": {
+        "cost": {
+          "total_duration_ms": 93900000
+        }
+      }
+    },
+    {
+      "name": "duration_ms hours",
+      "field": {
+        "type": "field",
+        "key": "cost.total_duration_ms",
+        "dataType": "duration_ms",
+        "format": "hours"
+      },
+      "payload": {
+        "cost": {
+          "total_duration_ms": 93900000
+        }
+      }
+    },
+    {
+      "name": "duration_ms long below one day",
+      "field": {
+        "type": "field",
+        "key": "cost.total_duration_ms",
+        "dataType": "duration_ms",
+        "format": "long"
+      },
+      "payload": {
+        "cost": {
+          "total_duration_ms": 7500000
+        }
+      }
+    },
+    {
+      "name": "duration_ms long with days",
+      "field": {
+        "type": "field",
+        "key": "cost.total_duration_ms",
+        "dataType": "duration_ms",
+        "format": "long"
+      },
+      "payload": {
+        "cost": {
+          "total_duration_ms": 93900000
+        }
+      }
+    },
+    {
+      "name": "timestamp countdown short",
+      "field": {
+        "type": "field",
+        "key": "rate_limits.five_hour.resets_at",
+        "dataType": "unix_timestamp",
+        "format": "short"
+      },
+      "payload": {
+        "rate_limits": {
+          "five_hour": {
+            "resets_at": 1757007530
+          }
+        }
+      }
+    },
+    {
+      "name": "timestamp countdown short with days",
+      "field": {
+        "type": "field",
+        "key": "rate_limits.five_hour.resets_at",
+        "dataType": "unix_timestamp",
+        "format": "short"
+      },
+      "payload": {
+        "rate_limits": {
+          "five_hour": {
+            "resets_at": 1757093900
+          }
+        }
+      }
+    },
+    {
+      "name": "timestamp countdown clamps past to zero",
+      "field": {
+        "type": "field",
+        "key": "rate_limits.five_hour.resets_at",
+        "dataType": "unix_timestamp",
+        "format": "short"
+      },
+      "payload": {
+        "rate_limits": {
+          "five_hour": {
+            "resets_at": 1756996400
+          }
+        }
+      }
+    },
+    {
+      "name": "timestamp countdown hours",
+      "field": {
+        "type": "field",
+        "key": "rate_limits.five_hour.resets_at",
+        "dataType": "unix_timestamp",
+        "format": "hours"
+      },
+      "payload": {
+        "rate_limits": {
+          "five_hour": {
+            "resets_at": 1757093900
+          }
+        }
+      }
+    },
+    {
+      "name": "timestamp countdown long",
+      "field": {
+        "type": "field",
+        "key": "rate_limits.five_hour.resets_at",
+        "dataType": "unix_timestamp",
+        "format": "long"
+      },
+      "payload": {
+        "rate_limits": {
+          "five_hour": {
+            "resets_at": 1757093900
+          }
+        }
+      }
+    },
+    {
+      "name": "timestamp countdown days_hours below one day",
+      "field": {
+        "type": "field",
+        "key": "rate_limits.five_hour.resets_at",
+        "dataType": "unix_timestamp",
+        "format": "days_hours"
+      },
+      "payload": {
+        "rate_limits": {
+          "five_hour": {
+            "resets_at": 1757007500
+          }
+        }
+      }
+    },
+    {
+      "name": "timestamp countdown days_hours with days",
+      "field": {
+        "type": "field",
+        "key": "rate_limits.five_hour.resets_at",
+        "dataType": "unix_timestamp",
+        "format": "days_hours"
+      },
+      "payload": {
+        "rate_limits": {
+          "five_hour": {
+            "resets_at": 1757093900
+          }
+        }
+      }
+    },
+    {
+      "name": "timestamp countdown days_hours_pad below one day",
+      "field": {
+        "type": "field",
+        "key": "rate_limits.five_hour.resets_at",
+        "dataType": "unix_timestamp",
+        "format": "days_hours_pad"
+      },
+      "payload": {
+        "rate_limits": {
+          "five_hour": {
+            "resets_at": 1757007500
+          }
+        }
+      }
+    },
+    {
+      "name": "timestamp raw",
+      "field": {
+        "type": "field",
+        "key": "rate_limits.five_hour.resets_at",
+        "dataType": "unix_timestamp",
+        "format": "raw"
+      },
+      "payload": {
+        "rate_limits": {
+          "five_hour": {
+            "resets_at": 1757000060
+          }
+        }
+      }
+    },
+    {
+      "name": "timestamp local_time",
+      "field": {
+        "type": "field",
+        "key": "rate_limits.five_hour.resets_at",
+        "dataType": "unix_timestamp",
+        "format": "local_time"
+      },
+      "payload": {
+        "rate_limits": {
+          "five_hour": {
+            "resets_at": 1757000000
+          }
+        }
+      }
+    },
+    {
+      "name": "timestamp local_datetime",
+      "field": {
+        "type": "field",
+        "key": "rate_limits.five_hour.resets_at",
+        "dataType": "unix_timestamp",
+        "format": "local_datetime"
+      },
+      "payload": {
+        "rate_limits": {
+          "five_hour": {
+            "resets_at": 1757000000
+          }
+        }
+      }
+    },
+    {
+      "name": "timestamp local_short",
+      "field": {
+        "type": "field",
+        "key": "rate_limits.five_hour.resets_at",
+        "dataType": "unix_timestamp",
+        "format": "local_short"
+      },
+      "payload": {
+        "rate_limits": {
+          "five_hour": {
+            "resets_at": 1757000000
+          }
+        }
+      }
+    },
+    {
+      "name": "timestamp custom numeric pattern",
+      "field": {
+        "type": "field",
+        "key": "rate_limits.five_hour.resets_at",
+        "dataType": "unix_timestamp",
+        "format": "custom",
+        "formatOptions": {
+          "customPattern": "yyyy-MM-dd HH:mm:ss"
+        }
+      },
+      "payload": {
+        "rate_limits": {
+          "five_hour": {
+            "resets_at": 1757000000
+          }
+        }
+      }
+    },
+    {
+      "name": "timestamp custom pattern with quoted literal",
+      "field": {
+        "type": "field",
+        "key": "rate_limits.five_hour.resets_at",
+        "dataType": "unix_timestamp",
+        "format": "custom",
+        "formatOptions": {
+          "customPattern": "d.M.yy 'um' H:m:s"
+        }
+      },
+      "payload": {
+        "rate_limits": {
+          "five_hour": {
+            "resets_at": 1757000000
+          }
+        }
+      }
+    },
+    {
+      "name": "timestamp custom without pattern falls back to raw",
+      "field": {
+        "type": "field",
+        "key": "rate_limits.five_hour.resets_at",
+        "dataType": "unix_timestamp",
+        "format": "custom"
+      },
+      "payload": {
+        "rate_limits": {
+          "five_hour": {
+            "resets_at": 1757000000
+          }
+        }
+      }
+    },
+    {
+      "name": "timestamp ago past",
+      "field": {
+        "type": "field",
+        "key": "rate_limits.five_hour.resets_at",
+        "dataType": "unix_timestamp",
+        "format": "ago"
+      },
+      "payload": {
+        "rate_limits": {
+          "five_hour": {
+            "resets_at": 1756995650
+          }
+        }
+      }
+    },
+    {
+      "name": "timestamp ago future",
+      "field": {
+        "type": "field",
+        "key": "rate_limits.five_hour.resets_at",
+        "dataType": "unix_timestamp",
+        "format": "ago"
+      },
+      "payload": {
+        "rate_limits": {
+          "five_hour": {
+            "resets_at": 1757004350
+          }
+        }
+      }
+    },
+    {
+      "name": "timestamp ago with days",
+      "field": {
+        "type": "field",
+        "key": "rate_limits.five_hour.resets_at",
+        "dataType": "unix_timestamp",
+        "format": "ago"
+      },
+      "payload": {
+        "rate_limits": {
+          "five_hour": {
+            "resets_at": 1756906100
+          }
+        }
+      }
+    },
+    {
+      "name": "timestamp ago below threshold",
+      "field": {
+        "type": "field",
+        "key": "rate_limits.five_hour.resets_at",
+        "dataType": "unix_timestamp",
+        "format": "ago"
+      },
+      "payload": {
+        "rate_limits": {
+          "five_hour": {
+            "resets_at": 1756999970
+          }
+        }
+      }
+    },
+    {
+      "name": "timestamp ago custom labels",
+      "field": {
+        "type": "field",
+        "key": "rate_limits.five_hour.resets_at",
+        "dataType": "unix_timestamp",
+        "format": "ago",
+        "formatOptions": {
+          "pastPrefix": "",
+          "pastSuffix": " ago",
+          "futurePrefix": "in ",
+          "futureSuffix": " from now",
+          "nowLabel": "now"
+        }
+      },
+      "payload": {
+        "rate_limits": {
+          "five_hour": {
+            "resets_at": 1756995650
+          }
+        }
+      }
+    },
+    {
+      "name": "timestamp ago honors empty prefix",
+      "field": {
+        "type": "field",
+        "key": "rate_limits.five_hour.resets_at",
+        "dataType": "unix_timestamp",
+        "format": "ago",
+        "formatOptions": {
+          "pastPrefix": ""
+        }
+      },
+      "payload": {
+        "rate_limits": {
+          "five_hour": {
+            "resets_at": 1756995650
+          }
+        }
+      }
+    },
+    {
+      "name": "string passes through",
+      "field": {
+        "type": "field",
+        "key": "model.display_name",
+        "dataType": "string"
+      },
+      "payload": {
+        "model": {
+          "display_name": "Opus 4.6"
+        }
+      }
+    },
+    {
+      "name": "field without dataType passes raw value through",
+      "field": {
+        "type": "field",
+        "key": "model.display_name"
+      },
+      "payload": {
+        "model": {
+          "display_name": "Opus 4.6"
+        }
+      }
+    }
+  ]
+}

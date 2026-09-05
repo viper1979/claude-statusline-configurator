@@ -1,0 +1,337 @@
+{
+  "_comment": "Field type 'effort' dispatch on format; the level comes only from effort.level.",
+  "now": 1757000000,
+  "cases": [
+    {
+      "name": "effort raw low",
+      "field": {
+        "type": "effort",
+        "format": "raw"
+      },
+      "payload": {
+        "effort": {
+          "level": "low"
+        }
+      }
+    },
+    {
+      "name": "effort raw medium",
+      "field": {
+        "type": "effort",
+        "format": "raw"
+      },
+      "payload": {
+        "effort": {
+          "level": "medium"
+        }
+      }
+    },
+    {
+      "name": "effort raw high",
+      "field": {
+        "type": "effort",
+        "format": "raw"
+      },
+      "payload": {
+        "effort": {
+          "level": "high"
+        }
+      }
+    },
+    {
+      "name": "effort raw xhigh",
+      "field": {
+        "type": "effort",
+        "format": "raw"
+      },
+      "payload": {
+        "effort": {
+          "level": "xhigh"
+        }
+      }
+    },
+    {
+      "name": "effort raw max",
+      "field": {
+        "type": "effort",
+        "format": "raw"
+      },
+      "payload": {
+        "effort": {
+          "level": "max"
+        }
+      }
+    },
+    {
+      "name": "effort short low",
+      "field": {
+        "type": "effort",
+        "format": "short"
+      },
+      "payload": {
+        "effort": {
+          "level": "low"
+        }
+      }
+    },
+    {
+      "name": "effort short medium",
+      "field": {
+        "type": "effort",
+        "format": "short"
+      },
+      "payload": {
+        "effort": {
+          "level": "medium"
+        }
+      }
+    },
+    {
+      "name": "effort short high",
+      "field": {
+        "type": "effort",
+        "format": "short"
+      },
+      "payload": {
+        "effort": {
+          "level": "high"
+        }
+      }
+    },
+    {
+      "name": "effort short xhigh",
+      "field": {
+        "type": "effort",
+        "format": "short"
+      },
+      "payload": {
+        "effort": {
+          "level": "xhigh"
+        }
+      }
+    },
+    {
+      "name": "effort short max",
+      "field": {
+        "type": "effort",
+        "format": "short"
+      },
+      "payload": {
+        "effort": {
+          "level": "max"
+        }
+      }
+    },
+    {
+      "name": "effort symbol low",
+      "field": {
+        "type": "effort",
+        "format": "symbol"
+      },
+      "payload": {
+        "effort": {
+          "level": "low"
+        }
+      }
+    },
+    {
+      "name": "effort symbol medium",
+      "field": {
+        "type": "effort",
+        "format": "symbol"
+      },
+      "payload": {
+        "effort": {
+          "level": "medium"
+        }
+      }
+    },
+    {
+      "name": "effort symbol high",
+      "field": {
+        "type": "effort",
+        "format": "symbol"
+      },
+      "payload": {
+        "effort": {
+          "level": "high"
+        }
+      }
+    },
+    {
+      "name": "effort symbol xhigh",
+      "field": {
+        "type": "effort",
+        "format": "symbol"
+      },
+      "payload": {
+        "effort": {
+          "level": "xhigh"
+        }
+      }
+    },
+    {
+      "name": "effort symbol max",
+      "field": {
+        "type": "effort",
+        "format": "symbol"
+      },
+      "payload": {
+        "effort": {
+          "level": "max"
+        }
+      }
+    },
+    {
+      "name": "effort icon+raw low",
+      "field": {
+        "type": "effort",
+        "format": "icon+raw"
+      },
+      "payload": {
+        "effort": {
+          "level": "low"
+        }
+      }
+    },
+    {
+      "name": "effort icon+raw medium",
+      "field": {
+        "type": "effort",
+        "format": "icon+raw"
+      },
+      "payload": {
+        "effort": {
+          "level": "medium"
+        }
+      }
+    },
+    {
+      "name": "effort icon+raw high",
+      "field": {
+        "type": "effort",
+        "format": "icon+raw"
+      },
+      "payload": {
+        "effort": {
+          "level": "high"
+        }
+      }
+    },
+    {
+      "name": "effort icon+raw xhigh",
+      "field": {
+        "type": "effort",
+        "format": "icon+raw"
+      },
+      "payload": {
+        "effort": {
+          "level": "xhigh"
+        }
+      }
+    },
+    {
+      "name": "effort icon+raw max",
+      "field": {
+        "type": "effort",
+        "format": "icon+raw"
+      },
+      "payload": {
+        "effort": {
+          "level": "max"
+        }
+      }
+    },
+    {
+      "name": "effort icon+short low",
+      "field": {
+        "type": "effort",
+        "format": "icon+short"
+      },
+      "payload": {
+        "effort": {
+          "level": "low"
+        }
+      }
+    },
+    {
+      "name": "effort icon+short medium",
+      "field": {
+        "type": "effort",
+        "format": "icon+short"
+      },
+      "payload": {
+        "effort": {
+          "level": "medium"
+        }
+      }
+    },
+    {
+      "name": "effort icon+short high",
+      "field": {
+        "type": "effort",
+        "format": "icon+short"
+      },
+      "payload": {
+        "effort": {
+          "level": "high"
+        }
+      }
+    },
+    {
+      "name": "effort icon+short xhigh",
+      "field": {
+        "type": "effort",
+        "format": "icon+short"
+      },
+      "payload": {
+        "effort": {
+          "level": "xhigh"
+        }
+      }
+    },
+    {
+      "name": "effort icon+short max",
+      "field": {
+        "type": "effort",
+        "format": "icon+short"
+      },
+      "payload": {
+        "effort": {
+          "level": "max"
+        }
+      }
+    },
+    {
+      "name": "effort without format renders raw",
+      "field": {
+        "type": "effort"
+      },
+      "payload": {
+        "effort": {
+          "level": "high"
+        }
+      }
+    },
+    {
+      "name": "effort unknown level symbol uses first char",
+      "field": {
+        "type": "effort",
+        "format": "icon+short"
+      },
+      "payload": {
+        "effort": {
+          "level": "ultra"
+        }
+      }
+    },
+    {
+      "name": "effort missing level renders empty",
+      "field": {
+        "type": "effort",
+        "format": "symbol"
+      },
+      "payload": {}
+    }
+  ]
+}

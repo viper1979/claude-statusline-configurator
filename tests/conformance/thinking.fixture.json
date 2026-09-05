@@ -1,0 +1,164 @@
+{
+  "_comment": "Field type 'thinking_enabled' dispatch on format and custom symbols via formatOptions.",
+  "now": 1757000000,
+  "cases": [
+    {
+      "name": "thinking raw true",
+      "field": {
+        "type": "thinking_enabled",
+        "format": "raw"
+      },
+      "payload": {
+        "thinking": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "thinking raw false",
+      "field": {
+        "type": "thinking_enabled",
+        "format": "raw"
+      },
+      "payload": {
+        "thinking": {
+          "enabled": false
+        }
+      }
+    },
+    {
+      "name": "thinking short true",
+      "field": {
+        "type": "thinking_enabled",
+        "format": "short"
+      },
+      "payload": {
+        "thinking": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "thinking short false",
+      "field": {
+        "type": "thinking_enabled",
+        "format": "short"
+      },
+      "payload": {
+        "thinking": {
+          "enabled": false
+        }
+      }
+    },
+    {
+      "name": "thinking symbol true",
+      "field": {
+        "type": "thinking_enabled",
+        "format": "symbol"
+      },
+      "payload": {
+        "thinking": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "thinking symbol false",
+      "field": {
+        "type": "thinking_enabled",
+        "format": "symbol"
+      },
+      "payload": {
+        "thinking": {
+          "enabled": false
+        }
+      }
+    },
+    {
+      "name": "thinking icon+raw true",
+      "field": {
+        "type": "thinking_enabled",
+        "format": "icon+raw"
+      },
+      "payload": {
+        "thinking": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "thinking icon+raw false",
+      "field": {
+        "type": "thinking_enabled",
+        "format": "icon+raw"
+      },
+      "payload": {
+        "thinking": {
+          "enabled": false
+        }
+      }
+    },
+    {
+      "name": "thinking icon+short true",
+      "field": {
+        "type": "thinking_enabled",
+        "format": "icon+short"
+      },
+      "payload": {
+        "thinking": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "thinking icon+short false",
+      "field": {
+        "type": "thinking_enabled",
+        "format": "icon+short"
+      },
+      "payload": {
+        "thinking": {
+          "enabled": false
+        }
+      }
+    },
+    {
+      "name": "thinking custom true symbol",
+      "field": {
+        "type": "thinking_enabled",
+        "format": "icon+short",
+        "formatOptions": {
+          "trueSymbol": "🧠"
+        }
+      },
+      "payload": {
+        "thinking": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "thinking custom false symbol",
+      "field": {
+        "type": "thinking_enabled",
+        "format": "symbol",
+        "formatOptions": {
+          "falseSymbol": "zz"
+        }
+      },
+      "payload": {
+        "thinking": {
+          "enabled": false
+        }
+      }
+    },
+    {
+      "name": "thinking missing renders empty",
+      "field": {
+        "type": "thinking_enabled",
+        "format": "symbol"
+      },
+      "payload": {}
+    }
+  ]
+}

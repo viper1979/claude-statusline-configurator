@@ -1,0 +1,156 @@
+{
+  "_comment": "Truncate-Text / Truncate-Path by field kind and Get-FieldRawValue key normalization.",
+  "now": 1757000000,
+  "cases": [
+    {
+      "name": "maxLength shortens with ellipsis",
+      "field": {
+        "type": "field",
+        "key": "model.display_name",
+        "dataType": "string",
+        "maxLength": 5
+      },
+      "payload": {
+        "model": {
+          "display_name": "Claude Opus"
+        }
+      }
+    },
+    {
+      "name": "maxLength one yields only the ellipsis",
+      "field": {
+        "type": "field",
+        "key": "model.display_name",
+        "dataType": "string",
+        "maxLength": 1
+      },
+      "payload": {
+        "model": {
+          "display_name": "Claude"
+        }
+      }
+    },
+    {
+      "name": "maxLength leaves short values alone",
+      "field": {
+        "type": "field",
+        "key": "model.display_name",
+        "dataType": "string",
+        "maxLength": 20
+      },
+      "payload": {
+        "model": {
+          "display_name": "Claude"
+        }
+      }
+    },
+    {
+      "name": "pathDepth keeps trailing segments with backslashes",
+      "field": {
+        "type": "field",
+        "key": "cwd",
+        "dataType": "string",
+        "pathDepth": 2
+      },
+      "payload": {
+        "cwd": "D:\\Development\\ccstatusline\\tests"
+      }
+    },
+    {
+      "name": "pathDepth keeps trailing segments with slashes",
+      "field": {
+        "type": "field",
+        "key": "workspace.current_dir",
+        "dataType": "string",
+        "pathDepth": 1
+      },
+      "payload": {
+        "workspace": {
+          "current_dir": "/home/user/project"
+        }
+      }
+    },
+    {
+      "name": "pathDepth leaves shallow paths alone",
+      "field": {
+        "type": "field",
+        "key": "cwd",
+        "dataType": "string",
+        "pathDepth": 5
+      },
+      "payload": {
+        "cwd": "D:\\dev"
+      }
+    },
+    {
+      "name": "maxLength is ignored on path keys",
+      "field": {
+        "type": "field",
+        "key": "cwd",
+        "dataType": "string",
+        "maxLength": 3
+      },
+      "payload": {
+        "cwd": "D:\\Development\\ccstatusline"
+      }
+    },
+    {
+      "name": "pathDepth is ignored on non-path keys",
+      "field": {
+        "type": "field",
+        "key": "model.display_name",
+        "dataType": "string",
+        "pathDepth": 1
+      },
+      "payload": {
+        "model": {
+          "display_name": "a/b/c"
+        }
+      }
+    },
+    {
+      "name": "added_dirs counts array entries",
+      "field": {
+        "type": "field",
+        "key": "workspace.added_dirs",
+        "dataType": "number",
+        "format": "raw"
+      },
+      "payload": {
+        "workspace": {
+          "added_dirs": [
+            "a",
+            "b",
+            "c"
+          ]
+        }
+      }
+    },
+    {
+      "name": "added_dirs missing counts zero",
+      "field": {
+        "type": "field",
+        "key": "workspace.added_dirs",
+        "dataType": "number",
+        "format": "raw"
+      },
+      "payload": {
+        "workspace": {}
+      }
+    },
+    {
+      "name": "hit_ratio renders as percentage with one decimal",
+      "field": {
+        "type": "field",
+        "key": "prompt_cache.hit_ratio",
+        "dataType": "number",
+        "format": "raw"
+      },
+      "payload": {
+        "prompt_cache": {
+          "hit_ratio": 0.7564
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,165 @@
+{
+  "_comment": "Placeholder chain of Format-Field: field.placeholder > worktree.branch 'none' > per-dataType default > hide.",
+  "now": 1757000000,
+  "cases": [
+    {
+      "name": "explicit placeholder replaces a missing value",
+      "field": {
+        "type": "field",
+        "key": "model.display_name",
+        "dataType": "string",
+        "placeholder": "n/a"
+      },
+      "payload": {}
+    },
+    {
+      "name": "empty placeholder hides the field",
+      "field": {
+        "type": "field",
+        "key": "model.display_name",
+        "dataType": "string",
+        "placeholder": ""
+      },
+      "payload": {}
+    },
+    {
+      "name": "null placeholder falls through to the dataType default",
+      "field": {
+        "type": "field",
+        "key": "model.display_name",
+        "dataType": "string",
+        "placeholder": null
+      },
+      "payload": {}
+    },
+    {
+      "name": "worktree.branch defaults to none",
+      "field": {
+        "type": "field",
+        "key": "worktree.branch",
+        "dataType": "string"
+      },
+      "payload": {
+        "worktree": {}
+      }
+    },
+    {
+      "name": "worktree.branch explicit placeholder wins over none",
+      "field": {
+        "type": "field",
+        "key": "worktree.branch",
+        "dataType": "string",
+        "placeholder": "detached"
+      },
+      "payload": {}
+    },
+    {
+      "name": "currency default placeholder",
+      "field": {
+        "type": "field",
+        "key": "cost.total_cost_usd",
+        "dataType": "currency"
+      },
+      "payload": {}
+    },
+    {
+      "name": "number default placeholder",
+      "field": {
+        "type": "field",
+        "key": "cost.total_lines_added",
+        "dataType": "number",
+        "format": "auto"
+      },
+      "payload": {}
+    },
+    {
+      "name": "string default placeholder",
+      "field": {
+        "type": "field",
+        "key": "model.display_name",
+        "dataType": "string"
+      },
+      "payload": {}
+    },
+    {
+      "name": "duration_ms default placeholder",
+      "field": {
+        "type": "field",
+        "key": "cost.total_duration_ms",
+        "dataType": "duration_ms",
+        "format": "short"
+      },
+      "payload": {}
+    },
+    {
+      "name": "unix_timestamp default placeholder",
+      "field": {
+        "type": "field",
+        "key": "rate_limits.five_hour.resets_at",
+        "dataType": "unix_timestamp",
+        "format": "short"
+      },
+      "payload": {}
+    },
+    {
+      "name": "bool without default placeholder hides",
+      "field": {
+        "type": "field",
+        "key": "thinking.enabled",
+        "dataType": "bool",
+        "format": "yes_no"
+      },
+      "payload": {}
+    },
+    {
+      "name": "field without dataType hides when missing",
+      "field": {
+        "type": "field",
+        "key": "model.display_name"
+      },
+      "payload": {}
+    },
+    {
+      "name": "empty string counts as missing",
+      "field": {
+        "type": "field",
+        "key": "model.display_name",
+        "dataType": "string"
+      },
+      "payload": {
+        "model": {
+          "display_name": ""
+        }
+      }
+    },
+    {
+      "name": "zero is a value, not missing",
+      "field": {
+        "type": "field",
+        "key": "cost.total_lines_added",
+        "dataType": "number",
+        "format": "auto"
+      },
+      "payload": {
+        "cost": {
+          "total_lines_added": 0
+        }
+      }
+    },
+    {
+      "name": "null timestamp uses the placeholder",
+      "field": {
+        "type": "field",
+        "key": "prompt_cache.last_miss_at",
+        "dataType": "unix_timestamp",
+        "format": "ago",
+        "placeholder": "kein Miss"
+      },
+      "payload": {
+        "prompt_cache": {
+          "last_miss_at": null
+        }
+      }
+    }
+  ]
+}

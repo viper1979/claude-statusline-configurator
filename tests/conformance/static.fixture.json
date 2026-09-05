@@ -1,0 +1,30 @@
+{
+  "_comment": "Field type 'static'. The HTML adapter must escape and the harness unescape without loss.",
+  "now": 1757000000,
+  "cases": [
+    {
+      "name": "static text",
+      "field": {
+        "type": "static",
+        "text": "| "
+      },
+      "payload": {}
+    },
+    {
+      "name": "static text with html specials",
+      "field": {
+        "type": "static",
+        "text": "<b> & \"q\" 'a'"
+      },
+      "payload": {}
+    },
+    {
+      "name": "static empty text",
+      "field": {
+        "type": "static",
+        "text": ""
+      },
+      "payload": {}
+    }
+  ]
+}
