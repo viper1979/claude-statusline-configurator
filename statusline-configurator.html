@@ -612,9 +612,10 @@ function formatFieldValue(value, dataType, format, formatOptions, nowSeconds = n
       // k, m, b are deprecated — fall back to auto
       const effectiveFormat = ['k', 'm', 'b'].includes(format) ? 'auto' : format;
       if (effectiveFormat === 'auto') {
-        if (n >= 1_000_000_000) return Math.round(n / 1_000_000_000) + 'b';
-        if (n >= 1_000_000)     return Math.round(n / 1_000_000) + 'm';
-        if (n >= 1_000)         return Math.round(n / 1_000) + 'k';
+        // Upper-case suffixes, matching Format-FieldValue in statusline.ps1
+        if (n >= 1_000_000_000) return Math.round(n / 1_000_000_000) + 'B';
+        if (n >= 1_000_000)     return Math.round(n / 1_000_000) + 'M';
+        if (n >= 1_000)         return Math.round(n / 1_000) + 'K';
         return String(Math.round(n));
       }
       return String(Math.round(n)); // 'raw'
