@@ -592,6 +592,30 @@ function getFieldRawValue(data, key) {
 }
 
 /**
+ * Formats a number of seconds as a duration. Mirrors Format-Duration in statusline.ps1:
+ * negative input clamps to zero, minute resolution, and the same five formats.
+ * 'short' always shows hours, even "0h 5m" — the status line does, so the preview must.
+ * @param {number} totalSeconds
+ * @param {string} format - 'short'|'hours'|'long'|'days_hours'|'days_hours_pad'
+ * @returns {string}
+ */
+function formatDuration(totalSeconds, format) {
+  const secs         = Math.max(0, Math.trunc(totalSeconds));
+  const totalMinutes = Math.trunc(secs / 60);
+  const hours        = Math.trunc(totalMinutes / 60);
+  const minutes      = totalMinutes % 60;
+  const days         = Math.trunc(hours / 24);
+  const remHours     = hours % 24;
+  switch (format) {
+    case 'hours':          return `${hours}h ${minutes}m`;
+    case 'long':           return days > 0 ? `${days}d ${remHours}hr ${minutes}min` : `${hours}hr ${minutes}min`;
+    case 'days_hours':     return days > 0 ? `${days}d ${remHours}h` : `${hours}h`;
+    case 'days_hours_pad': return `${days}d ${remHours}h`;
+    default: /* 'short' */ return days > 0 ? `${days}d ${remHours}h ${minutes}m` : `${hours}h ${minutes}m`;
+  }
+}
+
+/**
  * Rounds to the nearest integer with ties going to the even neighbour, the way
  * [math]::Round and the [int] cast behave in PowerShell (2.5 -> 2, 3.5 -> 4).
  * Math.round would round 2.5 up and make the preview drift from the status line.
@@ -659,40 +683,14 @@ function formatFieldValue(value, dataType, format, formatOptions, nowSeconds = n
         const pattern = patternMap[format] ?? (formatOptions?.customPattern || '');
         return pattern ? formatDotNetPattern(date, pattern) : String(value);
       }
-      const now        = nowSeconds ?? Math.floor(Date.now() / 1000);
-      const diff       = Math.max(0, Number(value) - now);
-      const totalHours = Math.floor(diff / 3600);
-      const days       = Math.floor(diff / 86400);
-      const remHours   = Math.floor((diff % 86400) / 3600);
-      const minutes    = Math.floor((diff % 3600) / 60);
-      switch (format) {
-        case 'raw':            return String(value);
-        case 'hours':          return `${totalHours}h ${minutes}m`;
-        case 'long':           return days > 0
-          ? `${days}d ${remHours}hr ${minutes}min`
-          : `${totalHours}hr ${minutes}min`;
-        case 'days_hours':     return days > 0
-          ? `${days}d ${remHours}h`
-          : `${totalHours}h`;
-        case 'days_hours_pad': return `${days}d ${remHours}h`;
-        default: /* 'short' */ return days > 0
-          ? `${days}d ${remHours}h ${minutes}m`
-          : `${totalHours}h ${minutes}m`;
-      }
+      if (format === 'raw') return String(value);
+      const now = nowSeconds ?? Math.floor(Date.now() / 1000);
+      return formatDuration(Number(value) - now, format);
     }
-    case 'duration_ms': {
-      // Value is in milliseconds (e.g. cost.total_duration_ms) — convert to seconds first
-      const secs = Math.max(0, Math.floor(Number(value) / 1000));
-      const d = Math.floor(secs / 86400);
-      const h = Math.floor((secs % 86400) / 3600);
-      const m = Math.floor((secs % 3600) / 60);
-      if (format === 'hours') return `${h}h ${m}m`;
-      if (format === 'long')  return d > 0 ? `${d}d ${h}hr ${m}min` : `${h}hr ${m}min`;
-      // 'short' — omit leading zero units
-      if (d > 0) return `${d}d ${h}h ${m}m`;
-      if (h > 0) return `${h}h ${m}m`;
-      return `${m}m`;
-    }
+    case 'duration_ms':
+      // Value is in milliseconds (e.g. cost.total_duration_ms) — convert to seconds first.
+      // The [long] cast in PowerShell rounds half-to-even, so mirror that before truncating.
+      return formatDuration(roundHalfToEven(Number(value) / 1000), format);
     default: // 'string' and unknown types
       return String(value);
   }
