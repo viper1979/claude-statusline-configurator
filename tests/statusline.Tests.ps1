@@ -1,6 +1,16 @@
 BeforeAll {
     # Dot-source the script under test
     . (Join-Path $PSScriptRoot '../statusline.ps1')
+
+    # Builds a Render Context for direct calls into the rendering chain. Overrides are
+    # applied on top of what New-RenderContext derives from an empty config.
+    function New-TestRenderContext {
+        param([hashtable]$Overrides = @{})
+        $ctx = New-RenderContext -Config ([PSCustomObject]@{})
+        foreach ($key in $Overrides.Keys) { $ctx[$key] = $Overrides[$key] }
+        return $ctx
+    }
+    $ctx = New-TestRenderContext
 }
 
 Describe 'Get-NestedValue' {
@@ -159,12 +169,12 @@ Describe 'Format-Field' {
 
     It 'renders a field type with its raw value' {
         $field = [PSCustomObject]@{ type='field'; key='model.display_name'; fg=$null; bg=$null }
-        Format-Field $field $sampleData | Should -Match 'Opus'
+        Format-Field -Context $ctx $field $sampleData | Should -Match 'Opus'
     }
 
     It 'wraps value with fg ANSI color when fg is set and fgOverride is true' {
         $field = [PSCustomObject]@{ type='field'; key='model.display_name'; fg='#ffffff'; fgOverride=$true; bg=$null }
-        $result = Format-Field $field $sampleData
+        $result = Format-Field -Context $ctx $field $sampleData
         # #ffffff = RGB 255,255,255
         $result | Should -Match '255;255;255'
         $result | Should -Match 'Opus'
@@ -172,12 +182,12 @@ Describe 'Format-Field' {
 
     It 'renders static type with its text' {
         $field = [PSCustomObject]@{ type='static'; text=' | '; fg=$null; bg=$null }
-        Format-Field $field $sampleData | Should -Be ' | '
+        Format-Field -Context $ctx $field $sampleData | Should -Be ' | '
     }
 
     It 'renders static type with fg color when fgOverride is true' {
         $field = [PSCustomObject]@{ type='static'; text='|'; fg='#888888'; fgOverride=$true; bg=$null }
-        $result = Format-Field $field $sampleData
+        $result = Format-Field -Context $ctx $field $sampleData
         $result | Should -Match '\|'
         # #888888 = RGB 136,136,136
         $result | Should -Match '136;136;136'
@@ -185,14 +195,14 @@ Describe 'Format-Field' {
 
     It 'renders progressbar type as a bar string' {
         $field = [PSCustomObject]@{ type='progressbar'; key='context_window.used_percentage'; progressStyle='block'; fg=$null; bg=$null }
-        $result = Format-Field $field $sampleData
+        $result = Format-Field -Context $ctx $field $sampleData
         $result | Should -Match '45%'
         $result | Should -Match '\['
     }
 
     It 'renders progressbar with raw style as plain number without bar characters' {
         $field = [PSCustomObject]@{ type='progressbar'; key='context_window.used_percentage'; progressStyle='raw'; fg=$null; bg=$null }
-        $result = Format-Field $field $sampleData
+        $result = Format-Field -Context $ctx $field $sampleData
         $result | Should -Match '45'
         $result | Should -Not -Match '\['
         $result | Should -Not -Match '%'
@@ -200,21 +210,21 @@ Describe 'Format-Field' {
 
     It 'renders progressbar without brackets when barBrackets is false' {
         $field = [PSCustomObject]@{ type='progressbar'; key='context_window.used_percentage'; progressStyle='normal'; barBrackets=$false; barCharset='block'; fg=$null; bg=$null }
-        $result = Format-Field $field $sampleData
+        $result = Format-Field -Context $ctx $field $sampleData
         $result | Should -Match '45%'
         $result | Should -Not -Match '\['
     }
 
     It 'renders progressbar with circle charset' {
         $field = [PSCustomObject]@{ type='progressbar'; key='context_window.used_percentage'; progressStyle='normal'; barBrackets=$true; barCharset='circle'; fg=$null; bg=$null }
-        $result = Format-Field $field $sampleData
+        $result = Format-Field -Context $ctx $field $sampleData
         $result | Should -Match '●'
         $result | Should -Match '○'
     }
 
     It 'renders progressbar with ascii charset and no brackets' {
         $field = [PSCustomObject]@{ type='progressbar'; key='context_window.used_percentage'; progressStyle='normal'; barBrackets=$false; barCharset='ascii'; fg=$null; bg=$null }
-        $result = Format-Field $field $sampleData
+        $result = Format-Field -Context $ctx $field $sampleData
         $result | Should -Match '#'
         $result | Should -Match '-'
         $result | Should -Not -Match '\['
@@ -222,13 +232,13 @@ Describe 'Format-Field' {
 
     It 'returns empty string for unknown field path' {
         $field = [PSCustomObject]@{ type='field'; key='does.not.exist'; fg=$null; bg=$null }
-        Format-Field $field $sampleData | Should -BeNullOrEmpty
+        Format-Field -Context $ctx $field $sampleData | Should -BeNullOrEmpty
     }
 
     It 'renders progressbar at 0% when value is null' {
         $data  = [PSCustomObject]@{}
         $field = [PSCustomObject]@{ type='progressbar'; key='missing.value'; progressStyle='block'; fg=$null; bg=$null }
-        $result = Format-Field $field $data
+        $result = Format-Field -Context $ctx $field $data
         $result | Should -Match '0%'
         $result | Should -Not -BeNullOrEmpty
     }
@@ -236,7 +246,7 @@ Describe 'Format-Field' {
     It 'renders progressbar raw style as 0 when value is null' {
         $data  = [PSCustomObject]@{}
         $field = [PSCustomObject]@{ type='progressbar'; key='missing.value'; progressStyle='raw'; fg=$null; bg=$null }
-        $result = Format-Field $field $data
+        $result = Format-Field -Context $ctx $field $data
         $result | Should -Match '^.*0.*$'
         $result | Should -Not -Match '%'
     }
@@ -244,19 +254,19 @@ Describe 'Format-Field' {
     It 'renders worktree.branch as none when value is null' {
         $data  = [PSCustomObject]@{}
         $field = [PSCustomObject]@{ type='field'; key='worktree.branch'; fg=$null; bg=$null; dataType='string'; format=$null; formatOptions=$null; pathDepth=$null }
-        Format-Field $field $data | Should -Be 'none'
+        Format-Field -Context $ctx $field $data | Should -Be 'none'
     }
 
     It 'renders worktree.branch as none when value is empty string' {
         $data  = [PSCustomObject]@{ worktree = [PSCustomObject]@{ branch = '' } }
         $field = [PSCustomObject]@{ type='field'; key='worktree.branch'; fg=$null; bg=$null; dataType='string'; format=$null; formatOptions=$null; pathDepth=$null }
-        Format-Field $field $data | Should -Be 'none'
+        Format-Field -Context $ctx $field $data | Should -Be 'none'
     }
 
     It 'applies pathDepth truncation to cwd field' {
         $data  = [PSCustomObject]@{ cwd = '/home/user/myproject' }
         $field = [PSCustomObject]@{ type='field'; key='cwd'; fg=$null; bg=$null; pathDepth=2; dataType=$null; format=$null; formatOptions=$null }
-        $result = Format-Field $field $data
+        $result = Format-Field -Context $ctx $field $data
         $result | Should -Match 'user/myproject'
         $result | Should -Match '\.\.\.'
     }
@@ -264,7 +274,7 @@ Describe 'Format-Field' {
     It 'shows full path for cwd field when pathDepth is null' {
         $data  = [PSCustomObject]@{ cwd = '/home/user/myproject' }
         $field = [PSCustomObject]@{ type='field'; key='cwd'; fg=$null; bg=$null; pathDepth=$null; dataType=$null; format=$null; formatOptions=$null }
-        $result = Format-Field $field $data
+        $result = Format-Field -Context $ctx $field $data
         $result | Should -Match '/home/user/myproject'
     }
 }
@@ -282,14 +292,14 @@ Describe 'Format-Line' {
             [PSCustomObject]@{ type='static'; text=' v1'; fg=$null; bg=$null }
         )
         $line = [PSCustomObject]@{ fields = $fields }
-        $result = Format-Line $line $sampleData
+        $result = Format-Line -Context $ctx $line $sampleData
         $result | Should -Match 'Sonnet'
         $result | Should -Match 'v1'
     }
 
     It 'returns empty string for a line with no fields' {
         $line = [PSCustomObject]@{ fields = @() }
-        Format-Line $line $sampleData | Should -BeNullOrEmpty
+        Format-Line -Context $ctx $line $sampleData | Should -BeNullOrEmpty
     }
 }
 
@@ -672,14 +682,14 @@ Describe 'Format-Field with dataType' {
         $field = [PSCustomObject]@{
             type='field'; key='cost.total_cost_usd'; dataType='currency'; format=$null; formatOptions=$null; fg=$null; bg=$null
         }
-        Format-Field $field $data | Should -Be '0.01'
+        Format-Field -Context $ctx $field $data | Should -Be '0.01'
     }
 
     It 'falls back to raw value when dataType is not set' {
         $field = [PSCustomObject]@{
             type='field'; key='model.display_name'; dataType=$null; format=$null; formatOptions=$null; fg=$null; bg=$null
         }
-        Format-Field $field $data | Should -Be 'Opus'
+        Format-Field -Context $ctx $field $data | Should -Be 'Opus'
     }
 }
 
@@ -713,7 +723,7 @@ Describe 'Invoke-Main JSON persistence' {
         { Invoke-Main -ConfigPath $blockedConfig -InputJson '{"version":"1.0"}' } | Should -Not -Throw
     }
 
-    It 'sets script:KnownKeys from config so new_fields_indicator works in same call' {
+    It 'renders new_fields_indicator against knownKeys from the config' {
         $cfgWithIndicator = @{
             lines = @(@{ fields = @(@{ type='new_fields_indicator'; fg=$null; bg=$null }) })
             knownKeys = @('version')
@@ -797,27 +807,23 @@ Describe 'new_fields_indicator in Format-Field' {
         }
     }
 
-    AfterAll {
-        $script:KnownKeys = $null
-    }
-
     Context 'when unknown keys are present' {
-        BeforeAll { $script:KnownKeys = @('model.display_name', 'version') }
+        BeforeAll { $ctx = New-TestRenderContext @{ KnownKeys = @('model.display_name', 'version') } }
 
         It 'returns indicator string with bullet and count' {
             $field = [PSCustomObject]@{ type='new_fields_indicator'; fg=$null; bg=$null }
-            $result = Format-Field $field $data
+            $result = Format-Field -Context $ctx $field $data
             $result | Should -Match '●'
             $result | Should -Match 'neue'
         }
     }
 
     Context 'when all keys are known' {
-        BeforeAll { $script:KnownKeys = @('model', 'model.display_name', 'version', 'newKey') }
+        BeforeAll { $ctx = New-TestRenderContext @{ KnownKeys = @('model', 'model.display_name', 'version', 'newKey') } }
 
         It 'returns empty string' {
             $field = [PSCustomObject]@{ type='new_fields_indicator'; fg=$null; bg=$null }
-            Format-Field $field $data | Should -BeNullOrEmpty
+            Format-Field -Context $ctx $field $data | Should -BeNullOrEmpty
         }
     }
 
@@ -827,18 +833,15 @@ Describe 'new_fields_indicator in Format-Field' {
             # The PSObject wrapper quirk formerly made -is [PSCustomObject] return True for
             # this string, causing Get-AllKeys to emit "worktree.branch.Length" and the
             # indicator to fire even though no genuine new key was present.
-            $script:KnownKeys = @('worktree.branch')
+            $ctx = New-TestRenderContext @{ KnownKeys = @('worktree.branch') }
             $script:enrichedData = [PSCustomObject]@{}
             $script:enrichedData | Add-Member -NotePropertyName 'worktree' -NotePropertyValue ([PSCustomObject]@{}) -Force
             $script:enrichedData.worktree | Add-Member -NotePropertyName 'branch' -NotePropertyValue 'master' -Force
-            $script:ThemeFg   = $null
-            $script:ThemeBg   = $null
-            $script:ThemesMap = @{}
         }
 
         It 'returns empty string when branch is the only key and is known' {
             $field = [PSCustomObject]@{ type='new_fields_indicator'; fg=$null; bg=$null }
-            Format-Field $field $script:enrichedData | Should -BeNullOrEmpty
+            Format-Field -Context $ctx $field $script:enrichedData | Should -BeNullOrEmpty
         }
     }
 }
@@ -984,11 +987,8 @@ Describe 'Format-Field added_dirs' {
             dataType='number'; format='raw'; fgOverride=$false; bgOverride=$false
             pathDepth=$null; formatOptions=$null
         }
-        $script:ThemeFg   = $null
-        $script:ThemeBg   = $null
-        $script:ThemesMap = @{}
         $script:PathKeys  = @()
-        Format-Field $field $data | Should -Match '2'
+        Format-Field -Context $ctx $field $data | Should -Match '2'
     }
 
     It 'returns 0 when added_dirs is an empty array' {
@@ -1000,19 +1000,13 @@ Describe 'Format-Field added_dirs' {
             dataType='number'; format='raw'; fgOverride=$false; bgOverride=$false
             pathDepth=$null; formatOptions=$null
         }
-        $script:ThemeFg   = $null
-        $script:ThemeBg   = $null
-        $script:ThemesMap = @{}
         $script:PathKeys  = @()
-        Format-Field $field $data | Should -Match '0'
+        Format-Field -Context $ctx $field $data | Should -Match '0'
     }
 }
 
 Describe 'Format-Field placeholder' {
     BeforeAll {
-        $script:ThemeFg   = $null
-        $script:ThemeBg   = $null
-        $script:ThemesMap = @{}
         $script:PathKeys  = @()
     }
 
@@ -1023,7 +1017,7 @@ Describe 'Format-Field placeholder' {
             dataType='string'; format=$null; fgOverride=$false; bgOverride=$false
             pathDepth=$null; formatOptions=$null
         }
-        Format-Field $field $data | Should -Be '--'
+        Format-Field -Context $ctx $field $data | Should -Be '--'
     }
 
     It 'returns per-dataType default 0 for number when value is null' {
@@ -1033,7 +1027,7 @@ Describe 'Format-Field placeholder' {
             dataType='number'; format='raw'; fgOverride=$false; bgOverride=$false
             pathDepth=$null; formatOptions=$null
         }
-        Format-Field $field $data | Should -Be '0'
+        Format-Field -Context $ctx $field $data | Should -Be '0'
     }
 
     It 'returns per-dataType default $0.00 for currency when value is null' {
@@ -1043,7 +1037,7 @@ Describe 'Format-Field placeholder' {
             dataType='currency'; format=$null; fgOverride=$false; bgOverride=$false
             pathDepth=$null; formatOptions=$null
         }
-        Format-Field $field $data | Should -Be '$0.00'
+        Format-Field -Context $ctx $field $data | Should -Be '$0.00'
     }
 
     It 'returns per-dataType default -- for duration_ms when value is null' {
@@ -1053,7 +1047,7 @@ Describe 'Format-Field placeholder' {
             dataType='duration_ms'; format='short'; fgOverride=$false; bgOverride=$false
             pathDepth=$null; formatOptions=$null
         }
-        Format-Field $field $data | Should -Be '--'
+        Format-Field -Context $ctx $field $data | Should -Be '--'
     }
 
     It 'returns per-dataType default -- for unix_timestamp when value is null' {
@@ -1063,7 +1057,7 @@ Describe 'Format-Field placeholder' {
             dataType='unix_timestamp'; format='hours'; fgOverride=$false; bgOverride=$false
             pathDepth=$null; formatOptions=$null
         }
-        Format-Field $field $data | Should -Be '--'
+        Format-Field -Context $ctx $field $data | Should -Be '--'
     }
 
     It 'uses explicit placeholder over dataType default' {
@@ -1073,7 +1067,7 @@ Describe 'Format-Field placeholder' {
             dataType='string'; format=$null; fgOverride=$false; bgOverride=$false
             pathDepth=$null; formatOptions=$null; placeholder='(kein Agent)'
         }
-        Format-Field $field $data | Should -Be '(kein Agent)'
+        Format-Field -Context $ctx $field $data | Should -Be '(kein Agent)'
     }
 
     It 'returns empty string when placeholder is explicitly empty string' {
@@ -1083,7 +1077,7 @@ Describe 'Format-Field placeholder' {
             dataType='string'; format=$null; fgOverride=$false; bgOverride=$false
             pathDepth=$null; formatOptions=$null; placeholder=''
         }
-        Format-Field $field $data | Should -BeNullOrEmpty
+        Format-Field -Context $ctx $field $data | Should -BeNullOrEmpty
     }
 
     It 'retains none for worktree.branch when no placeholder is set' {
@@ -1093,7 +1087,7 @@ Describe 'Format-Field placeholder' {
             dataType='string'; format=$null; fgOverride=$false; bgOverride=$false
             pathDepth=$null; formatOptions=$null
         }
-        Format-Field $field $data | Should -Be 'none'
+        Format-Field -Context $ctx $field $data | Should -Be 'none'
     }
 
     It 'respects placeholder for worktree.branch when explicitly set' {
@@ -1103,7 +1097,7 @@ Describe 'Format-Field placeholder' {
             dataType='string'; format=$null; fgOverride=$false; bgOverride=$false
             pathDepth=$null; formatOptions=$null; placeholder='main'
         }
-        Format-Field $field $data | Should -Be 'main'
+        Format-Field -Context $ctx $field $data | Should -Be 'main'
     }
 }
 
@@ -1213,42 +1207,38 @@ Describe 'Compute-DerivedFields' {
 
 Describe 'new_fields_indicator logging' {
     BeforeAll {
-        $script:ThemeFg   = $null
-        $script:ThemeBg   = $null
-        $script:ThemesMap = @{}
-        $script:KnownKeys = @('version')
         $logPath = Join-Path $TestDrive 'statusline-new-fields.log'
-        $script:NewFieldsLogPath = $logPath
+        $ctx = New-TestRenderContext @{ KnownKeys = @('version'); NewFieldsLogPath = $logPath }
     }
 
     AfterEach {
-        if (Test-Path $script:NewFieldsLogPath) { Remove-Item $script:NewFieldsLogPath -Force }
+        if (Test-Path $ctx.NewFieldsLogPath) { Remove-Item $ctx.NewFieldsLogPath -Force }
     }
 
     It 'writes unknown key names to log file when LogNewFields is true' {
-        $script:LogNewFields = $true
+        $ctx.LogNewFields = $true
         $data  = [PSCustomObject]@{ version = '1.0'; unknownKey = 'value' }
         $field = [PSCustomObject]@{ type='new_fields_indicator'; fg=$null; bg=$null; fgOverride=$false; bgOverride=$false }
-        Format-Field $field $data | Out-Null
-        Test-Path $script:NewFieldsLogPath | Should -BeTrue
-        $logContent = Get-Content $script:NewFieldsLogPath -Raw
+        Format-Field -Context $ctx $field $data | Out-Null
+        Test-Path $ctx.NewFieldsLogPath | Should -BeTrue
+        $logContent = Get-Content $ctx.NewFieldsLogPath -Raw
         $logContent | Should -Match 'unknownKey'
     }
 
     It 'does not write log when LogNewFields is false' {
-        $script:LogNewFields = $false
+        $ctx.LogNewFields = $false
         $data  = [PSCustomObject]@{ version = '1.0'; unknownKey = 'value' }
         $field = [PSCustomObject]@{ type='new_fields_indicator'; fg=$null; bg=$null; fgOverride=$false; bgOverride=$false }
-        Format-Field $field $data | Out-Null
-        Test-Path $script:NewFieldsLogPath | Should -BeFalse
+        Format-Field -Context $ctx $field $data | Out-Null
+        Test-Path $ctx.NewFieldsLogPath | Should -BeFalse
     }
 
     It 'does not write log when no unknown keys exist' {
-        $script:LogNewFields = $true
+        $ctx.LogNewFields = $true
         $data  = [PSCustomObject]@{ version = '1.0' }
         $field = [PSCustomObject]@{ type='new_fields_indicator'; fg=$null; bg=$null; fgOverride=$false; bgOverride=$false }
-        Format-Field $field $data | Out-Null
-        Test-Path $script:NewFieldsLogPath | Should -BeFalse
+        Format-Field -Context $ctx $field $data | Out-Null
+        Test-Path $ctx.NewFieldsLogPath | Should -BeFalse
     }
 }
 
@@ -1341,7 +1331,7 @@ Describe 'Format-Lines-Aligned' {
                 [PSCustomObject]@{ type = 'static'; text = 'hi'; fg = $null; bg = $null }
             )
         })
-        $result = Format-Lines-Aligned $lines ([PSCustomObject]@{})
+        $result = Format-Lines-Aligned -Context $ctx $lines ([PSCustomObject]@{})
         $result | Should -Be 'hi'
     }
 
@@ -1358,7 +1348,7 @@ Describe 'Format-Lines-Aligned' {
                 [PSCustomObject]@{ type = 'static'; text = 'x';     fg = $null; bg = $null }
             )}
         )
-        $result = Format-Lines-Aligned $lines ([PSCustomObject]@{})
+        $result = Format-Lines-Aligned -Context $ctx $lines ([PSCustomObject]@{})
         $resultLines = $result -split "`n"
         # Group 1: 'hi' padded to width of 'hello' (5), group 2: ' | ' (3), group 3: no padding on last
         $resultLines[0] | Should -Be 'hi    | world'
@@ -1377,7 +1367,7 @@ Describe 'Format-Lines-Aligned' {
                 [PSCustomObject]@{ type = 'static'; text = 'Y';         fg = $null; bg = $null }
             )}
         )
-        $result = Format-Lines-Aligned $lines ([PSCustomObject]@{})
+        $result = Format-Lines-Aligned -Context $ctx $lines ([PSCustomObject]@{})
         $resultLines = $result -split "`n"
         # Group 1: 'ab' (2 chars) vs 'longgroup' (9 chars) → 'ab' padded to 9
         $resultLines[0] | Should -Be 'ab       X'
@@ -1391,7 +1381,7 @@ Describe 'Format-Lines-Aligned' {
                 [PSCustomObject]@{ type = 'static'; text = 'ok'; fg = $null; bg = $null }
             )}
         )
-        $result = Format-Lines-Aligned $lines ([PSCustomObject]@{})
+        $result = Format-Lines-Aligned -Context $ctx $lines ([PSCustomObject]@{})
         $result | Should -Be 'ok'
     }
 
@@ -1404,7 +1394,7 @@ Describe 'Format-Lines-Aligned' {
                 [PSCustomObject]@{ type = 'static'; text = 'much longer text'; fg = $null; bg = $null }
             )}
         )
-        $result = Format-Lines-Aligned $lines ([PSCustomObject]@{})
+        $result = Format-Lines-Aligned -Context $ctx $lines ([PSCustomObject]@{})
         $resultLines = $result -split "`n"
         # Last group — no trailing padding on either line
         $resultLines[0] | Should -Be 'short'
@@ -1425,7 +1415,7 @@ Describe 'Format-Lines-Aligned' {
                 [PSCustomObject]@{ type = 'static'; text = 'Y';     fg = $null; bg = $null }
             )}
         )
-        $result = Format-Lines-Aligned $lines ([PSCustomObject]@{})
+        $result = Format-Lines-Aligned -Context $ctx $lines ([PSCustomObject]@{})
         $resultLines = $result -split "`n"
         # Group 1: 'hi' (2 visible) padded to width of 'hello' (5) → 3 spaces appended after ANSI sequence
         # Visible: 'hi   X' and 'helloY'
@@ -1508,7 +1498,7 @@ Describe 'Format-Line-Group single line' {
                 [PSCustomObject]@{ type = 'static'; text = 'hi'; fg = $null; bg = $null }
             )
         })
-        $result = Format-Line-Group $lines ([PSCustomObject]@{})
+        $result = Format-Line-Group -Context $ctx $lines ([PSCustomObject]@{})
         $result | Should -Be 'hi'
     }
 }
@@ -1516,9 +1506,6 @@ Describe 'Format-Line-Group single line' {
 Describe 'Format-Field effort rendering' {
     # Tests for the native effort.level field (nested payload path).
     BeforeAll {
-        $script:ThemeFg   = $null
-        $script:ThemeBg   = $null
-        $script:ThemesMap = @{}
         $script:PathKeys  = @()
 
         function script:Make-EffortField($fmt) {
@@ -1548,7 +1535,7 @@ Describe 'Format-Field effort rendering' {
         @{ level = 'max'   ; expected = 'max'    }
     ) {
         # Arrange / Act
-        $result = Format-Field (Make-EffortField 'raw') (Make-EffortData $level)
+        $result = Format-Field -Context $ctx (Make-EffortField 'raw') (Make-EffortData $level)
         # Assert
         $result | Should -Be $expected
     }
@@ -1561,14 +1548,14 @@ Describe 'Format-Field effort rendering' {
         @{ level = 'max'   ; expected = 'X'  }
     ) {
         # Arrange / Act
-        $result = Format-Field (Make-EffortField 'short') (Make-EffortData $level)
+        $result = Format-Field -Context $ctx (Make-EffortField 'short') (Make-EffortData $level)
         # Assert
         $result | Should -Be $expected
     }
 
     It 'format=symbol emits correct UTF-8 bytes for low (U+25CB ○)' {
         # Arrange / Act
-        $output = Format-Field (Make-EffortField 'symbol') (Make-EffortData 'low')
+        $output = Format-Field -Context $ctx (Make-EffortField 'symbol') (Make-EffortData 'low')
         $hex    = ([System.Text.Encoding]::UTF8.GetBytes($output) | ForEach-Object { '{0:X2}' -f $_ }) -join ''
         # Assert: U+25CB ○ → UTF-8 E2 97 8B
         $hex | Should -Match 'E2978B'
@@ -1576,7 +1563,7 @@ Describe 'Format-Field effort rendering' {
 
     It 'format=symbol emits correct UTF-8 bytes for medium (U+25D0 ◐)' {
         # Arrange / Act
-        $output = Format-Field (Make-EffortField 'symbol') (Make-EffortData 'medium')
+        $output = Format-Field -Context $ctx (Make-EffortField 'symbol') (Make-EffortData 'medium')
         $hex    = ([System.Text.Encoding]::UTF8.GetBytes($output) | ForEach-Object { '{0:X2}' -f $_ }) -join ''
         # Assert: U+25D0 ◐ → UTF-8 E2 97 90
         $hex | Should -Match 'E29790'
@@ -1584,7 +1571,7 @@ Describe 'Format-Field effort rendering' {
 
     It 'format=symbol emits correct UTF-8 bytes for high (U+25CF ●)' {
         # Arrange / Act
-        $output = Format-Field (Make-EffortField 'symbol') (Make-EffortData 'high')
+        $output = Format-Field -Context $ctx (Make-EffortField 'symbol') (Make-EffortData 'high')
         $hex    = ([System.Text.Encoding]::UTF8.GetBytes($output) | ForEach-Object { '{0:X2}' -f $_ }) -join ''
         # Assert: U+25CF ● → UTF-8 E2 97 8F
         $hex | Should -Match 'E2978F'
@@ -1592,7 +1579,7 @@ Describe 'Format-Field effort rendering' {
 
     It 'format=symbol emits correct UTF-8 bytes for xhigh (U+2B24 ⬤)' {
         # Arrange / Act
-        $output = Format-Field (Make-EffortField 'symbol') (Make-EffortData 'xhigh')
+        $output = Format-Field -Context $ctx (Make-EffortField 'symbol') (Make-EffortData 'xhigh')
         $hex    = ([System.Text.Encoding]::UTF8.GetBytes($output) | ForEach-Object { '{0:X2}' -f $_ }) -join ''
         # Assert: U+2B24 ⬤ → UTF-8 E2 AC A4
         $hex | Should -Match 'E2ACA4'
@@ -1600,7 +1587,7 @@ Describe 'Format-Field effort rendering' {
 
     It 'format=symbol emits correct UTF-8 bytes for max (U+25C9 ◉)' {
         # Arrange / Act
-        $output = Format-Field (Make-EffortField 'symbol') (Make-EffortData 'max')
+        $output = Format-Field -Context $ctx (Make-EffortField 'symbol') (Make-EffortData 'max')
         $hex    = ([System.Text.Encoding]::UTF8.GetBytes($output) | ForEach-Object { '{0:X2}' -f $_ }) -join ''
         # Assert: U+25C9 ◉ → UTF-8 E2 97 89
         $hex | Should -Match 'E29789'
@@ -1608,7 +1595,7 @@ Describe 'Format-Field effort rendering' {
 
     It 'format=icon+raw contains symbol and raw value for medium' {
         # Arrange / Act
-        $output = Format-Field (Make-EffortField 'icon+raw') (Make-EffortData 'medium')
+        $output = Format-Field -Context $ctx (Make-EffortField 'icon+raw') (Make-EffortData 'medium')
         $hex    = ([System.Text.Encoding]::UTF8.GetBytes($output) | ForEach-Object { '{0:X2}' -f $_ }) -join ''
         # Assert
         $output | Should -Match 'medium'
@@ -1617,7 +1604,7 @@ Describe 'Format-Field effort rendering' {
 
     It 'format=icon+short contains symbol and short char for xhigh' {
         # Arrange / Act
-        $output = Format-Field (Make-EffortField 'icon+short') (Make-EffortData 'xhigh')
+        $output = Format-Field -Context $ctx (Make-EffortField 'icon+short') (Make-EffortData 'xhigh')
         $hex    = ([System.Text.Encoding]::UTF8.GetBytes($output) | ForEach-Object { '{0:X2}' -f $_ }) -join ''
         # Assert
         $output | Should -Match 'XH'
@@ -1626,18 +1613,15 @@ Describe 'Format-Field effort rendering' {
 
     It 'returns empty string when effort.level is absent' {
         # Arrange / Act / Assert
-        Format-Field (Make-EffortField 'raw') ([PSCustomObject]@{}) | Should -Be ''
+        Format-Field -Context $ctx (Make-EffortField 'raw') ([PSCustomObject]@{}) | Should -Be ''
     }
 }
 
 Describe 'Format-Field effort_level deprecated stub' {
     # The old effort_level field type must not crash old configs — it silently returns ''.
     BeforeAll {
-        $script:ThemeFg          = $null
-        $script:ThemeBg          = $null
-        $script:ThemesMap        = @{}
         $script:PathKeys         = @()
-        $script:DeprecationWarned = $null  # reset gate so the log write triggers fresh
+        $ctx = New-TestRenderContext  # fresh DeprecationWarned so the log write triggers
     }
 
     It 'returns empty string and does not throw for effort_level type' {
@@ -1653,16 +1637,13 @@ Describe 'Format-Field effort_level deprecated stub' {
         $data = [PSCustomObject]@{ effort = [PSCustomObject]@{ level = 'high' } }
 
         # Act / Assert
-        { Format-Field $field $data } | Should -Not -Throw
-        Format-Field $field $data    | Should -Be ''
+        { Format-Field -Context $ctx $field $data } | Should -Not -Throw
+        Format-Field -Context $ctx $field $data    | Should -Be ''
     }
 }
 
 Describe 'Format-Field thinking_enabled rendering' {
     BeforeAll {
-        $script:ThemeFg   = $null
-        $script:ThemeBg   = $null
-        $script:ThemesMap = @{}
         $script:PathKeys  = @()
 
         function script:Make-ThinkingField($fmt, $formatOptions = $null) {
@@ -1686,27 +1667,27 @@ Describe 'Format-Field thinking_enabled rendering' {
 
     It "format=raw returns 'true' when enabled" {
         # Arrange / Act / Assert
-        Format-Field (Make-ThinkingField 'raw') (Make-ThinkingData $true) | Should -Be 'true'
+        Format-Field -Context $ctx (Make-ThinkingField 'raw') (Make-ThinkingData $true) | Should -Be 'true'
     }
 
     It "format=raw returns 'false' when disabled" {
         # Arrange / Act / Assert
-        Format-Field (Make-ThinkingField 'raw') (Make-ThinkingData $false) | Should -Be 'false'
+        Format-Field -Context $ctx (Make-ThinkingField 'raw') (Make-ThinkingData $false) | Should -Be 'false'
     }
 
     It "format=short returns 'T' when enabled" {
         # Arrange / Act / Assert
-        Format-Field (Make-ThinkingField 'short') (Make-ThinkingData $true) | Should -Be 'T'
+        Format-Field -Context $ctx (Make-ThinkingField 'short') (Make-ThinkingData $true) | Should -Be 'T'
     }
 
     It "format=short returns '-' when disabled" {
         # Arrange / Act / Assert
-        Format-Field (Make-ThinkingField 'short') (Make-ThinkingData $false) | Should -Be '-'
+        Format-Field -Context $ctx (Make-ThinkingField 'short') (Make-ThinkingData $false) | Should -Be '-'
     }
 
     It 'format=symbol emits 💭 (U+1F4AD) UTF-8 bytes when enabled' {
         # Arrange / Act
-        $output = Format-Field (Make-ThinkingField 'symbol') (Make-ThinkingData $true)
+        $output = Format-Field -Context $ctx (Make-ThinkingField 'symbol') (Make-ThinkingData $true)
         $hex    = ([System.Text.Encoding]::UTF8.GetBytes($output) | ForEach-Object { '{0:X2}' -f $_ }) -join ''
         # Assert: U+1F4AD 💭 → UTF-8 F0 9F 92 AD
         $hex | Should -Match 'F09F92AD'
@@ -1714,7 +1695,7 @@ Describe 'Format-Field thinking_enabled rendering' {
 
     It 'format=symbol emits ○ (U+25CB) UTF-8 bytes when disabled' {
         # Arrange / Act
-        $output = Format-Field (Make-ThinkingField 'symbol') (Make-ThinkingData $false)
+        $output = Format-Field -Context $ctx (Make-ThinkingField 'symbol') (Make-ThinkingData $false)
         $hex    = ([System.Text.Encoding]::UTF8.GetBytes($output) | ForEach-Object { '{0:X2}' -f $_ }) -join ''
         # Assert: U+25CB ○ → UTF-8 E2 97 8B
         $hex | Should -Match 'E2978B'
@@ -1722,7 +1703,7 @@ Describe 'Format-Field thinking_enabled rendering' {
 
     It 'format=icon+raw contains 💭 and raw value when enabled' {
         # Arrange / Act
-        $output = Format-Field (Make-ThinkingField 'icon+raw') (Make-ThinkingData $true)
+        $output = Format-Field -Context $ctx (Make-ThinkingField 'icon+raw') (Make-ThinkingData $true)
         $hex    = ([System.Text.Encoding]::UTF8.GetBytes($output) | ForEach-Object { '{0:X2}' -f $_ }) -join ''
         # Assert
         $output | Should -Match 'true'
@@ -1731,7 +1712,7 @@ Describe 'Format-Field thinking_enabled rendering' {
 
     It 'format=icon+short contains 💭 and T when enabled' {
         # Arrange / Act
-        $output = Format-Field (Make-ThinkingField 'icon+short') (Make-ThinkingData $true)
+        $output = Format-Field -Context $ctx (Make-ThinkingField 'icon+short') (Make-ThinkingData $true)
         $hex    = ([System.Text.Encoding]::UTF8.GetBytes($output) | ForEach-Object { '{0:X2}' -f $_ }) -join ''
         # Assert
         $output | Should -Match 'T'
@@ -1740,7 +1721,7 @@ Describe 'Format-Field thinking_enabled rendering' {
 
     It 'returns empty string when thinking.enabled is absent' {
         # Arrange / Act / Assert
-        Format-Field (Make-ThinkingField 'raw') ([PSCustomObject]@{}) | Should -Be ''
+        Format-Field -Context $ctx (Make-ThinkingField 'raw') ([PSCustomObject]@{}) | Should -Be ''
     }
 
     It 'ThinkingEnabled_WithCustomTrueSymbol_RendersCustomSymbol' {
@@ -1749,7 +1730,7 @@ Describe 'Format-Field thinking_enabled rendering' {
         $field = Make-ThinkingField 'symbol' $opts
 
         # Act
-        $output = Format-Field $field (Make-ThinkingData $true)
+        $output = Format-Field -Context $ctx $field (Make-ThinkingData $true)
 
         # Assert: output contains 🧠 (UTF-8 F0 9F A7 A0)
         $hex = ([System.Text.Encoding]::UTF8.GetBytes($output) | ForEach-Object { '{0:X2}' -f $_ }) -join ''
@@ -1762,7 +1743,7 @@ Describe 'Format-Field thinking_enabled rendering' {
         $field = Make-ThinkingField 'symbol' $opts
 
         # Act
-        $output = Format-Field $field (Make-ThinkingData $false)
+        $output = Format-Field -Context $ctx $field (Make-ThinkingData $false)
 
         # Assert: output contains ❌ (UTF-8 E2 9D 8C)
         $hex = ([System.Text.Encoding]::UTF8.GetBytes($output) | ForEach-Object { '{0:X2}' -f $_ }) -join ''
@@ -1771,8 +1752,8 @@ Describe 'Format-Field thinking_enabled rendering' {
 
     It 'ThinkingEnabled_WithoutFormatOptions_RendersDefaultSymbols' {
         # Arrange / Act
-        $trueOutput  = Format-Field (Make-ThinkingField 'symbol' $null) (Make-ThinkingData $true)
-        $falseOutput = Format-Field (Make-ThinkingField 'symbol' $null) (Make-ThinkingData $false)
+        $trueOutput  = Format-Field -Context $ctx (Make-ThinkingField 'symbol' $null) (Make-ThinkingData $true)
+        $falseOutput = Format-Field -Context $ctx (Make-ThinkingField 'symbol' $null) (Make-ThinkingData $false)
         $hexTrue  = ([System.Text.Encoding]::UTF8.GetBytes($trueOutput)  | ForEach-Object { '{0:X2}' -f $_ }) -join ''
         $hexFalse = ([System.Text.Encoding]::UTF8.GetBytes($falseOutput) | ForEach-Object { '{0:X2}' -f $_ }) -join ''
 
@@ -1787,7 +1768,7 @@ Describe 'Format-Field thinking_enabled rendering' {
         $field = Make-ThinkingField 'icon+raw' $opts
 
         # Act
-        $output = Format-Field $field (Make-ThinkingData $true)
+        $output = Format-Field -Context $ctx $field (Make-ThinkingData $true)
 
         # Assert: contains 🧠 bytes AND the word "true"
         $hex = ([System.Text.Encoding]::UTF8.GetBytes($output) | ForEach-Object { '{0:X2}' -f $_ }) -join ''
@@ -1801,7 +1782,7 @@ Describe 'Format-Field thinking_enabled rendering' {
         $field = Make-ThinkingField 'symbol' $opts
 
         # Act
-        $output = Format-Field $field (Make-ThinkingData $true)
+        $output = Format-Field -Context $ctx $field (Make-ThinkingData $true)
 
         # Assert: default 💭 (F0 9F 92 AD)
         $hex = ([System.Text.Encoding]::UTF8.GetBytes($output) | ForEach-Object { '{0:X2}' -f $_ }) -join ''
@@ -2010,12 +1991,7 @@ Describe 'Diagnostic Mode — Write-StatuslineDiag is fully opt-in' {
 Describe 'Diagnostic Mode — rendered output is identical with and without DiagMode' {
     BeforeAll {
         $script:diagTestLogPath2 = Join-Path (Split-Path $PSScriptRoot -Parent) 'statusline-diag.log'
-        # Script-level vars normally set by Invoke-Main; set defaults for direct function calls
-        $script:ThemesMap  = @{}
-        $script:ThemeFg    = $null
-        $script:ThemeBg    = $null
-        $script:KnownKeys  = $null
-        $script:LogNewFields = $false
+        $ctx.LogNewFields = $false
 
         $script:diagTestConfig = @{
             lines = @(
@@ -2049,10 +2025,10 @@ Describe 'Diagnostic Mode — rendered output is identical with and without Diag
 
     It 'Format-Lines-Aligned produces byte-identical output with and without DiagMode' {
         $script:DiagMode = $false
-        $outputOff = Format-Lines-Aligned $script:diagTestConfig.lines $script:diagTestData
+        $outputOff = Format-Lines-Aligned -Context $ctx $script:diagTestConfig.lines $script:diagTestData
 
         $script:DiagMode = $true
-        $outputOn = Format-Lines-Aligned $script:diagTestConfig.lines $script:diagTestData
+        $outputOn = Format-Lines-Aligned -Context $ctx $script:diagTestConfig.lines $script:diagTestData
         $script:DiagMode = $false
 
         $outputOn | Should -Be $outputOff
@@ -2126,17 +2102,7 @@ Describe 'Encoding — new_fields_indicator emits UTF-8 bullet' {
 
 Describe 'Powerline rendering' {
     BeforeAll {
-        # Reset script-level vars to known state before each test
-        $script:ThemesMap      = @{}
-        $script:ThemeFg        = $null
-        $script:ThemeBg        = $null
-        $script:KnownKeys      = $null
-        $script:LogNewFields   = $false
-        $script:PbThresholds   = @(
-            [PSCustomObject]@{ upTo = 50;  fg = '#4ade80' }
-            [PSCustomObject]@{ upTo = 80;  fg = '#facc15' }
-            [PSCustomObject]@{ upTo = 100; fg = '#f87171' }
-        )
+
 
         # Helper: strip all ANSI escape sequences from a string
         function Strip-Ansi { param([string]$s); $s -replace "\x1b\[[0-9;]*m", '' }
@@ -2154,24 +2120,12 @@ Describe 'Powerline rendering' {
             }
         }
 
-        # Helper: set script-scope Powerline state (simulates what Invoke-Main does)
-        function Set-PlMode {
+        # Helper: Render Context in Powerline mode (what Invoke-Main derives from the config)
+        function New-PlContext {
             param([string]$Sep = 'solid', [string]$Custom = '', [string]$DefBg = '#444444')
-            $script:RenderStyle     = 'powerline'
-            $script:PowerlineConfig = [PSCustomObject]@{
-                separator        = $Sep
-                separatorCustom  = $Custom
-                defaultSegmentBg = $DefBg
-            }
-        }
-
-        function Clear-PlMode {
-            $script:RenderStyle     = 'classic'
-            $script:PowerlineConfig = $null
+            New-RenderContext -Config (Make-PlConfig -Sep $Sep -Custom $Custom -DefBg $DefBg)
         }
     }
-
-    AfterEach { Clear-PlMode }
 
     Context 'Get-PowerlineSeparator' {
         It 'returns solid arrow for solid style' {
@@ -2341,13 +2295,13 @@ Describe 'Powerline rendering' {
     Context 'End-cap behavior' {
         It 'last segment ends with triangle in terminal default bg (no explicit bg reset code only)' {
             # Arrange
-            Set-PlMode -DefBg '#334455'
+            $ctx = New-PlContext -DefBg '#334455'
             $lines = @(@{
                 fields = @(@{ type='static'; text='end'; fg=$null; bg='#334455'; bgOverride=$true })
             }) | ConvertTo-Json -Depth 5 | ConvertFrom-Json
 
             # Act
-            $result = Format-Line-Group-Powerline $lines ([PSCustomObject]@{})
+            $result = Format-Line-Group-Powerline -Context $ctx $lines ([PSCustomObject]@{})
 
             # Assert: final token sequence is reset → fg(segBg) → arrow → reset
             # The reset appears at least twice: once before end-cap, once after
@@ -2713,7 +2667,7 @@ Describe 'Format-Field maxLength' {
         $data  = [PSCustomObject]@{ prompt_id = '326b3063-783f-4b81-a638-a34e564dbe2b' }
 
         # Act
-        $result = Format-Field -Field $field -Data $data
+        $result = Format-Field -Context $ctx -Field $field -Data $data
 
         # Assert
         $result | Should -Be ('326b3063' + [char]0x2026)
@@ -2725,7 +2679,7 @@ Describe 'Format-Field maxLength' {
         $data  = [PSCustomObject]@{ prompt_id = '326b3063-783f' }
 
         # Act / Assert
-        Format-Field -Field $field -Data $data | Should -Be '326b3063-783f'
+        Format-Field -Context $ctx -Field $field -Data $data | Should -Be '326b3063-783f'
     }
 
     It 'ignores maxLength on path fields, where pathDepth is the shortening tool' {
@@ -2737,7 +2691,7 @@ Describe 'Format-Field maxLength' {
         $data = [PSCustomObject]@{ scratchpad_dir = 'C:\Users\Viper\AppData\scratchpad' }
 
         # Act
-        $result = Format-Field -Field $field -Data $data
+        $result = Format-Field -Context $ctx -Field $field -Data $data
 
         # Assert
         $result | Should -Be '...\AppData\scratchpad'
@@ -2751,7 +2705,7 @@ Describe 'Format-Field prompt_cache fields' {
         $data  = [PSCustomObject]@{ prompt_cache = [PSCustomObject]@{ hit_ratio = 0.6701693342611923 } }
 
         # Act / Assert
-        Format-Field -Field $field -Data $data | Should -Be '67'
+        Format-Field -Context $ctx -Field $field -Data $data | Should -Be '67'
     }
 
     It 'renders hit_ratio as a raw progress bar value scaled to 0-100' {
@@ -2760,7 +2714,7 @@ Describe 'Format-Field prompt_cache fields' {
         $data  = [PSCustomObject]@{ prompt_cache = [PSCustomObject]@{ hit_ratio = 0.734 } }
 
         # Act / Assert
-        Format-Field -Field $field -Data $data | Should -Be '73.4'
+        Format-Field -Context $ctx -Field $field -Data $data | Should -Be '73.4'
     }
 
     It 'renders a null last_miss_at as the unix_timestamp placeholder' {
@@ -2769,7 +2723,7 @@ Describe 'Format-Field prompt_cache fields' {
         $data  = [PSCustomObject]@{ prompt_cache = [PSCustomObject]@{ last_miss_at = $null } }
 
         # Act / Assert
-        Format-Field -Field $field -Data $data | Should -Be '--'
+        Format-Field -Context $ctx -Field $field -Data $data | Should -Be '--'
     }
 
     It 'renders warm as a checkmark' {
@@ -2778,7 +2732,7 @@ Describe 'Format-Field prompt_cache fields' {
         $data  = [PSCustomObject]@{ prompt_cache = [PSCustomObject]@{ warm = $true } }
 
         # Act / Assert
-        Format-Field -Field $field -Data $data | Should -Be ([string][char]0x2713)
+        Format-Field -Context $ctx -Field $field -Data $data | Should -Be ([string][char]0x2713)
     }
 }
 
@@ -2928,16 +2882,6 @@ Describe 'New-RenderContext' {
 }
 
 Describe 'Render Context is passed explicitly' {
-    BeforeAll {
-        # Globals deliberately point away from the context values so a pass-through
-        # to script scope would be caught by the assertions below.
-        $script:ThemeFg   = $null
-        $script:ThemeBg   = $null
-        $script:ThemesMap = @{}
-        $script:KnownKeys = $null
-        $script:RenderStyle = 'classic'
-    }
-
     It 'Format-Field colors a field with the ThemeFg of the given context' {
         # Arrange
         $ctx   = New-RenderContext -Config ([PSCustomObject]@{
@@ -2983,14 +2927,12 @@ Describe 'Render Context is passed explicitly' {
         # Arrange
         $ctx   = New-RenderContext -Config ([PSCustomObject]@{})
         $field = [PSCustomObject]@{ type = 'effort_level' }
-        $script:DeprecationWarned = $null
 
         # Act
         Format-Field $field ([PSCustomObject]@{}) -Context $ctx | Out-Null
 
         # Assert
         $ctx.DeprecationWarned.Contains('effort_level') | Should -BeTrue
-        $script:DeprecationWarned | Should -BeNullOrEmpty
     }
 
     It 'Format-Field uses the context PbThresholds for color-coded progress bars' {
@@ -3022,7 +2964,6 @@ Describe 'Render Context is passed explicitly' {
         # Assert
         $seg.body        | Should -Match '48;2;16;16;16m'   # segment bg inherited by the field
         $seg.body        | Should -Match '38;2;255;0;0m'    # fg taken from the context theme
-        $script:ThemeBg  | Should -BeNullOrEmpty
         $ctx.ThemeBg     | Should -BeNullOrEmpty            # context itself was not mutated
     }
 
@@ -3052,5 +2993,15 @@ Describe 'Render Context is passed explicitly' {
         # Assert
         $aligned | Should -Match '38;2;255;0;0m'
         $plain   | Should -Match '38;2;255;0;0m'
+    }
+}
+
+Describe 'Assert-RenderContext' {
+    It 'Format-Field throws a clear error when no Render Context is passed' {
+        # Arrange
+        $field = [PSCustomObject]@{ type = 'static'; text = 'X' }
+
+        # Act / Assert
+        { Format-Field $field ([PSCustomObject]@{}) } | Should -Throw '*Render Context is required*'
     }
 }

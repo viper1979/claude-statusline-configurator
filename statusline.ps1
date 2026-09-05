@@ -262,14 +262,9 @@ function ConvertTo-AnsiBg {
 }
 
 $script:AnsiReset      = "$([char]27)[0m"
-$script:RenderStyle    = 'classic'
-$script:PowerlineConfig = $null
 
-# Path for new-fields log (set by Invoke-Main, overridable in tests via $script:NewFieldsLogPath)
-$script:LogNewFields     = $false
-$script:NewFieldsLogPath = $null
-
-# Default progressbar threshold colors (overridden by active theme at runtime)
+# Default progressbar threshold colors. New-RenderContext takes the active theme's
+# thresholds instead when the theme defines any; Format-ProgressBar falls back to these.
 $script:PbThresholds = @(
     [PSCustomObject]@{ upTo = 50;  fg = '#4ade80' },
     [PSCustomObject]@{ upTo = 80;  fg = '#facc15' },
@@ -703,7 +698,7 @@ function Format-Field {
         [PSCustomObject]$Data,
         [hashtable]$Context
     )
-    $ctx = Resolve-RenderContext $Context
+    $ctx = Assert-RenderContext $Context
 
     # Priority chain: fgOverride flag > field-specific theme > global theme > none.
     # Missing fgOverride is treated as false so the theme color applies.
@@ -948,7 +943,7 @@ function Build-PowerlineSegment {
         [string]$DefaultBg,
         [hashtable]$Context
     )
-    $ctx = Resolve-RenderContext $Context
+    $ctx = Assert-RenderContext $Context
 
     # Segment bg = first field with an explicit bgOverride; fall back to defaultSegmentBg.
     $segBg = $null
@@ -998,7 +993,7 @@ function Format-Line-Group-Powerline {
         [PSCustomObject]$Data,
         [hashtable]$Context
     )
-    $ctx = Resolve-RenderContext $Context
+    $ctx = Assert-RenderContext $Context
 
     $plConfig  = $ctx.PowerlineConfig
     $separator = Get-PowerlineSeparator $plConfig
@@ -1148,7 +1143,7 @@ function Format-Line-Group {
         [PSCustomObject]$Data,
         [hashtable]$Context
     )
-    $ctx = Resolve-RenderContext $Context
+    $ctx = Assert-RenderContext $Context
 
     # Dispatch to Powerline renderer when renderStyle is set in the Render Context
     if ($ctx.RenderStyle -eq 'powerline') {
@@ -1235,7 +1230,7 @@ function Format-Lines-Aligned {
         [hashtable]$Context
     )
     if (-not $Lines -or $Lines.Count -eq 0) { return '' }
-    $ctx = Resolve-RenderContext $Context
+    $ctx = Assert-RenderContext $Context
 
     $lineGroups = Build-LineGroups $Lines
     $parts = [System.Collections.Generic.List[string]]::new()
@@ -1265,7 +1260,7 @@ function Format-Line {
         [hashtable]$Context
     )
     if (-not $Line.fields -or $Line.fields.Count -eq 0) { return '' }
-    $ctx = Resolve-RenderContext $Context
+    $ctx = Assert-RenderContext $Context
 
     return ($Line.fields | ForEach-Object { Format-Field $_ $Data -Context $ctx }) -join ''
 }
@@ -1456,42 +1451,31 @@ function New-RenderContext {
 
 <#
 .SYNOPSIS
-    Migration shim: returns the given Render Context or a snapshot of the legacy script-scope globals.
+    Guards the rendering chain against a missing Render Context.
 .DESCRIPTION
-    TODO(render-context): remove once every caller passes -Context explicitly and the
-    script-scope globals are gone. Exists only so the rendering chain can be converted
-    one caller at a time while the test suite stays green.
+    The rendering functions are plain (non-advanced) functions, so a forgotten -Context
+    would silently bind nothing. Failing loudly here keeps the interface honest: there is
+    no ambient fallback to script scope.
 .PARAMETER Context
-    Render Context from New-RenderContext, or $null.
+    Render Context from New-RenderContext.
 .OUTPUTS
-    Hashtable with the Render Context keys.
+    The same hashtable, for assignment at the call site.
 #>
-function Resolve-RenderContext {
+function Assert-RenderContext {
     param(
         [hashtable]$Context
     )
-    if ($Context) { return $Context }
-
-    if (-not $script:DeprecationWarned) { $script:DeprecationWarned = [System.Collections.Generic.HashSet[string]]::new() }
-    return @{
-        ThemesMap         = $script:ThemesMap
-        ThemeFg           = $script:ThemeFg
-        ThemeBg           = $script:ThemeBg
-        PbThresholds      = $script:PbThresholds
-        KnownKeys         = $script:KnownKeys
-        LogNewFields      = $script:LogNewFields
-        NewFieldsLogPath  = $script:NewFieldsLogPath
-        RenderStyle       = $script:RenderStyle
-        PowerlineConfig   = $script:PowerlineConfig
-        DeprecationWarned = $script:DeprecationWarned
+    if (-not $Context) {
+        throw 'Render Context is required — build it with New-RenderContext and pass -Context.'
     }
+    return $Context
 }
 
 <#
 .SYNOPSIS
     Entry point. Reads config file and input JSON, renders all lines to stdout.
     Also persists the received payload to last-payload.json (next to the config file)
-    for field discovery, and exposes config.knownKeys to $script:KnownKeys so that
+    for field discovery, and builds the Render Context (New-RenderContext) so that
     the new_fields_indicator field type can detect unknown keys within the same call.
 .PARAMETER ConfigPath
     Full path to statusline-config.json. Defaults to the script's own directory.
@@ -1617,41 +1601,8 @@ function Invoke-Main {
         # Silently ignore — writing the payload file is optional diagnostics only
     }
 
-    # Expose knownKeys to script scope so Format-Field can access them for new_fields_indicator
-    $script:KnownKeys = if ($config.knownKeys) { $config.knownKeys } else { $null }
-
-    # Configure new-fields logging from config
-    $script:LogNewFields     = [bool]($config.logNewFields)
-    $script:NewFieldsLogPath = Join-Path $PSScriptRoot 'statusline-new-fields.log'
-
-    # Build a lookup map of all themes for per-field theme resolution
-    $script:ThemesMap = @{}
-    if ($config.themes) {
-        foreach ($t in $config.themes) {
-            $script:ThemesMap[$t.id] = $t
-        }
-    }
-
-    # Load active theme colors and thresholds into script scope
-    $script:ThemeFg = $null
-    $script:ThemeBg = $null
-    if ($config.activeTheme -and $config.themes) {
-        $activeThemeObj = $config.themes | Where-Object { $_.id -eq $config.activeTheme } | Select-Object -First 1
-        if ($activeThemeObj) {
-            if ($activeThemeObj.progressThresholds) {
-                $script:PbThresholds = $activeThemeObj.progressThresholds
-            }
-            # fieldFg/fieldBg apply to non-progressbar fields without an explicit override
-            $script:ThemeFg = $activeThemeObj.fieldFg
-            $script:ThemeBg = $activeThemeObj.fieldBg
-        }
-    }
-
-    # Load Powerline render style and options into script scope
-    $script:RenderStyle     = if ($config.renderStyle) { "$($config.renderStyle)" } else { 'classic' }
-    $script:PowerlineConfig = $config.powerline
-
-    # Build the Render Context once; the rendering chain receives it explicitly
+    # Build the Render Context once (themes, thresholds, known keys, logging, render style);
+    # the rendering chain receives it explicitly instead of reading script scope.
     $ctx = New-RenderContext -Config $config
 
     # Render each line — use two-pass column alignment unless explicitly disabled
