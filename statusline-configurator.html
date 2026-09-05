@@ -748,9 +748,13 @@ function renderFieldHtml(field, data, previewTheme = null, previewOverride = nul
   if (field.type === 'effort') {
     const symbolMap = { low: '○', medium: '◐', high: '●', xhigh: '⬤', max: '◉' };
     const shortMap  = { low: 'L', medium: 'M', high: 'H', xhigh: 'XH', max: 'X' };
-    const rawVal    = getNestedValue(data, 'effort.level') || 'medium';
+    // The level comes only from the payload; without it the status line shows nothing,
+    // so the preview must not invent a 'medium' default.
+    const rawLevel  = getNestedValue(data, 'effort.level');
+    if (rawLevel === undefined || rawLevel === null || String(rawLevel) === '') return '';
+    const rawVal    = String(rawLevel);
     const sym       = symbolMap[rawVal] ?? rawVal[0];
-    const sh        = shortMap[rawVal]  ?? rawVal.toUpperCase();
+    const sh        = shortMap[rawVal]  ?? rawVal.toUpperCase()[0];
     const rendered  = { raw: rawVal, short: sh, symbol: sym, 'icon+raw': `${sym} ${rawVal}`, 'icon+short': `${sym} ${sh}` }[field.format] ?? rawVal;
     return `<span style="${style}">${escapeHtml(rendered)}</span>`;
   }
