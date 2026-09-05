@@ -21,6 +21,13 @@ A value the status line computes itself and injects into the payload before
 rendering, because Claude Code does not report it directly.
 _Avoid_: Computed field, virtual field
 
+**Render Context**:
+Everything the status line derives from the configuration once per render in order to
+render any Field: the active theme's colors and thresholds, the per-field theme lookup,
+the known payload keys, and the new-fields logging settings. One value per render, built
+before the first Field is rendered and never changed while rendering.
+_Avoid_: Theme context, render settings, script scope, globals
+
 ## Model behavior
 
 **Effort Level**:

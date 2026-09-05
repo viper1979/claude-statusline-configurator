@@ -1357,6 +1357,68 @@ function Compute-DerivedFields {
 
 <#
 .SYNOPSIS
+    Builds the Render Context: everything Format-Field derives from the config once per render.
+.DESCRIPTION
+    The Render Context replaces ambient script-scope state. It is built once by Invoke-Main
+    before the first Field is rendered and passed explicitly down the rendering chain.
+    Keys of the returned hashtable:
+      ThemesMap         - hashtable theme.id -> theme object (per-field themeId lookup)
+      ThemeFg / ThemeBg - fieldFg / fieldBg of the active theme, or $null
+      PbThresholds      - progressThresholds of the active theme, or the script defaults
+      KnownKeys         - config.knownKeys for new_fields_indicator, or $null
+      LogNewFields      - [bool] config.logNewFields
+      NewFieldsLogPath  - path of the new-fields log next to the script
+      RenderStyle       - 'classic' or 'powerline'
+      PowerlineConfig   - config.powerline, or $null
+      DeprecationWarned - HashSet[string] of deprecation warnings already written this render
+.PARAMETER Config
+    Parsed statusline-config.json (PSCustomObject).
+.OUTPUTS
+    Hashtable with the keys listed above.
+#>
+function New-RenderContext {
+    param(
+        [PSCustomObject]$Config
+    )
+
+    $themesMap = @{}
+    if ($Config.themes) {
+        foreach ($t in $Config.themes) {
+            $themesMap[$t.id] = $t
+        }
+    }
+
+    $themeFg      = $null
+    $themeBg      = $null
+    $pbThresholds = $script:PbThresholds
+    if ($Config.activeTheme -and $Config.themes) {
+        $activeThemeObj = $Config.themes | Where-Object { $_.id -eq $Config.activeTheme } | Select-Object -First 1
+        if ($activeThemeObj) {
+            if ($activeThemeObj.progressThresholds) {
+                $pbThresholds = $activeThemeObj.progressThresholds
+            }
+            # fieldFg/fieldBg apply to non-progressbar fields without an explicit override
+            $themeFg = $activeThemeObj.fieldFg
+            $themeBg = $activeThemeObj.fieldBg
+        }
+    }
+
+    return @{
+        ThemesMap         = $themesMap
+        ThemeFg           = $themeFg
+        ThemeBg           = $themeBg
+        PbThresholds      = $pbThresholds
+        KnownKeys         = if ($Config.knownKeys) { $Config.knownKeys } else { $null }
+        LogNewFields      = [bool]($Config.logNewFields)
+        NewFieldsLogPath  = Join-Path $PSScriptRoot 'statusline-new-fields.log'
+        RenderStyle       = if ($Config.renderStyle) { "$($Config.renderStyle)" } else { 'classic' }
+        PowerlineConfig   = $Config.powerline
+        DeprecationWarned = [System.Collections.Generic.HashSet[string]]::new()
+    }
+}
+
+<#
+.SYNOPSIS
     Entry point. Reads config file and input JSON, renders all lines to stdout.
     Also persists the received payload to last-payload.json (next to the config file)
     for field discovery, and exposes config.knownKeys to $script:KnownKeys so that

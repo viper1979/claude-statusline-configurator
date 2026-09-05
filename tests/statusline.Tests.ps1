@@ -2782,3 +2782,147 @@ Describe 'Format-Field prompt_cache fields' {
     }
 }
 
+
+Describe 'New-RenderContext' {
+    It 'builds neutral defaults from an empty config' {
+        # Arrange
+        $config = [PSCustomObject]@{}
+
+        # Act
+        $ctx = New-RenderContext -Config $config
+
+        # Assert
+        $ctx | Should -BeOfType [hashtable]
+        $ctx.KnownKeys        | Should -BeNullOrEmpty
+        $ctx.LogNewFields     | Should -BeFalse
+        $ctx.NewFieldsLogPath | Should -Be (Join-Path (Resolve-Path (Join-Path $PSScriptRoot '..')).Path 'statusline-new-fields.log')
+        $ctx.ThemesMap.Count  | Should -Be 0
+        $ctx.ThemeFg          | Should -BeNullOrEmpty
+        $ctx.ThemeBg          | Should -BeNullOrEmpty
+        $ctx.RenderStyle      | Should -Be 'classic'
+        $ctx.PowerlineConfig  | Should -BeNullOrEmpty
+        $ctx.DeprecationWarned.Count | Should -Be 0
+    }
+
+    It 'falls back to the default progress thresholds when no theme is active' {
+        # Arrange
+        $config = [PSCustomObject]@{}
+
+        # Act
+        $ctx = New-RenderContext -Config $config
+
+        # Assert
+        $ctx.PbThresholds.Count | Should -Be 3
+        $ctx.PbThresholds[0].upTo | Should -Be 50
+        $ctx.PbThresholds[2].fg   | Should -Be '#f87171'
+    }
+
+    It 'indexes all themes by id in ThemesMap' {
+        # Arrange
+        $config = [PSCustomObject]@{
+            themes = @(
+                [PSCustomObject]@{ id = 'dark';  fieldFg = '#111111' },
+                [PSCustomObject]@{ id = 'light'; fieldFg = '#eeeeee' }
+            )
+        }
+
+        # Act
+        $ctx = New-RenderContext -Config $config
+
+        # Assert
+        $ctx.ThemesMap.Count           | Should -Be 2
+        $ctx.ThemesMap['light'].fieldFg | Should -Be '#eeeeee'
+    }
+
+    It 'takes colors and thresholds from the active theme' {
+        # Arrange
+        $config = [PSCustomObject]@{
+            activeTheme = 'dark'
+            themes = @(
+                [PSCustomObject]@{
+                    id = 'dark'; fieldFg = '#111111'; fieldBg = '#222222'
+                    progressThresholds = @([PSCustomObject]@{ upTo = 100; fg = '#00ff00' })
+                }
+            )
+        }
+
+        # Act
+        $ctx = New-RenderContext -Config $config
+
+        # Assert
+        $ctx.ThemeFg              | Should -Be '#111111'
+        $ctx.ThemeBg              | Should -Be '#222222'
+        $ctx.PbThresholds.Count   | Should -Be 1
+        $ctx.PbThresholds[0].fg   | Should -Be '#00ff00'
+    }
+
+    It 'keeps default thresholds when the active theme defines none' {
+        # Arrange
+        $config = [PSCustomObject]@{
+            activeTheme = 'dark'
+            themes = @([PSCustomObject]@{ id = 'dark'; fieldFg = '#111111' })
+        }
+
+        # Act
+        $ctx = New-RenderContext -Config $config
+
+        # Assert
+        $ctx.ThemeFg            | Should -Be '#111111'
+        $ctx.PbThresholds.Count | Should -Be 3
+    }
+
+    It 'leaves theme colors empty when activeTheme references an unknown id' {
+        # Arrange
+        $config = [PSCustomObject]@{
+            activeTheme = 'missing'
+            themes = @([PSCustomObject]@{ id = 'dark'; fieldFg = '#111111' })
+        }
+
+        # Act
+        $ctx = New-RenderContext -Config $config
+
+        # Assert
+        $ctx.ThemeFg | Should -BeNullOrEmpty
+        $ctx.ThemeBg | Should -BeNullOrEmpty
+    }
+
+    It 'copies knownKeys and logNewFields from the config' {
+        # Arrange
+        $config = [PSCustomObject]@{ knownKeys = @('model', 'version'); logNewFields = $true }
+
+        # Act
+        $ctx = New-RenderContext -Config $config
+
+        # Assert
+        $ctx.KnownKeys    | Should -Be @('model', 'version')
+        $ctx.LogNewFields | Should -BeTrue
+    }
+
+    It 'copies renderStyle and powerline options from the config' {
+        # Arrange
+        $config = [PSCustomObject]@{
+            renderStyle = 'powerline'
+            powerline   = [PSCustomObject]@{ defaultSegmentBg = '#123456' }
+        }
+
+        # Act
+        $ctx = New-RenderContext -Config $config
+
+        # Assert
+        $ctx.RenderStyle                      | Should -Be 'powerline'
+        $ctx.PowerlineConfig.defaultSegmentBg | Should -Be '#123456'
+    }
+
+    It 'returns an independent context on every call' {
+        # Arrange
+        $config = [PSCustomObject]@{}
+
+        # Act
+        $first  = New-RenderContext -Config $config
+        $second = New-RenderContext -Config $config
+        [void]$first.DeprecationWarned.Add('effort_level')
+
+        # Assert
+        $second.DeprecationWarned.Count | Should -Be 0
+    }
+}
