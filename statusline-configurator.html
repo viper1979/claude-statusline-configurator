@@ -394,6 +394,411 @@
 </script>
 
   <script>
+// @conformance-begin
+// ─── Pure rendering (conformance-tested) ─────────────────────────────────
+// Everything between the two markers mirrors statusline.ps1 and is executed by
+// tests/conformance/render-harness.js in Node: no document, no window, no state.
+// Dialog-specific values (e.g. live thinking symbols) are injected by the caller
+// via formatOptions. Verified by tests/conformance.Tests.ps1.
+
+// Fields that contain file-system paths (offer pathDepth option)
+const PATH_KEYS = new Set([
+  'cwd',
+  'transcript_path',
+  'workspace.current_dir',
+  'workspace.project_dir',
+  'worktree.path',
+  'worktree.original_cwd',
+  'scratchpad_dir',
+]);
+
+// ─── Progress bar rendering ───────────────────────────────────────────────
+
+// Color thresholds (global, matches PowerShell script)
+const PB_COLORS = { low: '#4ade80', mid: '#facc15', high: '#f87171' };
+
+// Character sets for filled/empty segments — mirrors PS charMap in Format-ProgressBar
+const PB_CHARSETS = {
+  block:  ['▓', '░'],
+  solid:  ['█', '░'],
+  circle: ['●', '○'],
+  square: ['■', '□'],
+  ascii:  ['#', '-'],
+  pipe:   ['▮', '▯'],
+};
+
+/**
+ * Returns { bar: string, color: string } for a progress bar.
+ * @param {number}      value   - 0 to 100
+ * @param {string}      style   - 'normal' | 'color-coded'
+ * @param {string|null} fg      - override color (#rrggbb) or null
+ * @param {boolean}     brackets - whether to wrap the bar in [ ]
+ * @param {string}      charset  - key from PB_CHARSETS, or 'braille' (handled separately)
+ */
+function makeProgressBar(value, style, fg, brackets = true, charset = 'block', thresholds = null) {
+  const pct    = Math.min(100, Math.max(0, value || 0));
+  const filled = Math.round(pct / 10);
+  const empty  = 10 - filled;
+
+  const activeThresholds = thresholds || [
+    { upTo: 50,  fg: PB_COLORS.low  },
+    { upTo: 80,  fg: PB_COLORS.mid  },
+    { upTo: 100, fg: PB_COLORS.high },
+  ];
+  const matched        = activeThresholds.find(t => pct < t.upTo);
+  const thresholdColor = matched ? matched.fg : activeThresholds[activeThresholds.length - 1].fg;
+  const color = fg ?? (style === 'color-coded' ? thresholdColor : null);
+
+  // Braille charset — special edge characters at positions 0 and 9 (brackets ignored)
+  if (charset === 'braille') {
+    let inner = '';
+    for (let i = 0; i < 10; i++) {
+      if      (i === 9)      inner += '\u28F9';  // ⣹ right edge always
+      else if (i < filled)   inner += '\u28FF';  // ⣿ filled
+      else if (i === 0)      inner += '\u28CF';  // ⣏ left edge when empty
+      else                   inner += '\u28C9';  // ⣉ empty
+    }
+    const bar = `${inner} ${Math.round(pct)}%`;
+    return { bar, color };
+  }
+
+  const [fillCh, emptyCh] = PB_CHARSETS[charset] || PB_CHARSETS.block;
+
+  const inner = fillCh.repeat(filled) + emptyCh.repeat(empty);
+  const bar   = brackets ? `[${inner}] ${Math.round(pct)}%` : `${inner} ${Math.round(pct)}%`;
+
+  return { bar, color };
+}
+
+/**
+ * Formats a JS Date using a subset of .NET custom DateTime format tokens.
+ * Supported tokens: yyyy, yy, MM, M, dd, d, HH, H, mm, m, ss, s
+ * Literal text can be escaped with single quotes: 'T' → T
+ * Non-token, non-alpha characters pass through as-is.
+ * @param {Date}   date    - JS Date object (local timezone)
+ * @param {string} pattern - .NET-style format pattern
+ * @returns {string}
+ */
+function formatDotNetPattern(date, pattern) {
+  if (!pattern) return '';
+  const pad2 = n => String(n).padStart(2, '0');
+  const yr   = date.getFullYear();
+  const mo   = date.getMonth() + 1;
+  const dy   = date.getDate();
+  const hr   = date.getHours();
+  const mn   = date.getMinutes();
+  const sc   = date.getSeconds();
+  // MMMM/MMM use the browser locale so month names appear in the user's language
+  const tokens = {
+    yyyy: String(yr),
+    yy:   String(yr).slice(-2),
+    MMMM: date.toLocaleString(undefined, { month: 'long' }),
+    MMM:  date.toLocaleString(undefined, { month: 'short' }),
+    MM:   pad2(mo),
+    M:    String(mo),
+    dd:   pad2(dy),
+    d:    String(dy),
+    HH:   pad2(hr),
+    H:    String(hr),
+    mm:   pad2(mn),
+    m:    String(mn),
+    ss:   pad2(sc),
+    s:    String(sc),
+  };
+  // Regex matches quoted literals first, then longest-token-first to avoid MMMM/MMM/MM/M collisions
+  return pattern.replace(/'[^']*'|yyyy|yy|MMMM|MMM|MM|M|dd|d|HH|H|mm|m|ss|s/g, match => {
+    if (match.startsWith("'")) return match.slice(1, -1); // strip surrounding quotes
+    return tokens[match] ?? match;
+  });
+}
+
+// Default labels for the 'ago' timestamp format; overridable per field via formatOptions.
+const AGO_DEFAULTS = {
+  pastPrefix:   'vor ',
+  pastSuffix:   '',
+  futurePrefix: 'in ',
+  futureSuffix: '',
+  nowLabel:     'gerade eben',
+};
+
+// Below this absolute delta 'ago' renders nowLabel — the duration formatter has
+// minute resolution, so anything shorter would read "vor 0h 0m" and look like a bug.
+const AGO_NOW_THRESHOLD_SECONDS = 60;
+
+/**
+ * Reads an 'ago' label from formatOptions, honoring deliberately empty strings.
+ * @param {object|null} formatOptions
+ * @param {string} name - key in AGO_DEFAULTS
+ * @returns {string}
+ */
+function agoLabel(formatOptions, name) {
+  const v = formatOptions?.[name];
+  return (v === undefined || v === null) ? AGO_DEFAULTS[name] : String(v);
+}
+
+/**
+ * Renders a unix timestamp as elapsed/upcoming duration. Mirrors Format-Ago in statusline.ps1.
+ * @param {number} unixSeconds
+ * @param {object|null} formatOptions - pastPrefix/pastSuffix/futurePrefix/futureSuffix/nowLabel
+ * @returns {string}
+ */
+function formatAgo(unixSeconds, formatOptions) {
+  const delta = unixSeconds - Math.floor(Date.now() / 1000);
+  if (Math.abs(delta) < AGO_NOW_THRESHOLD_SECONDS) return agoLabel(formatOptions, 'nowLabel');
+
+  const abs     = Math.abs(delta);
+  const days    = Math.floor(abs / 86400);
+  const hours   = Math.floor(abs / 3600);
+  const remH    = Math.floor((abs % 86400) / 3600);
+  const minutes = Math.floor((abs % 3600) / 60);
+  const magnitude = days > 0 ? `${days}d ${remH}h ${minutes}m` : `${hours}h ${minutes}m`;
+
+  const isPast = delta < 0;
+  const prefix = agoLabel(formatOptions, isPast ? 'pastPrefix' : 'futurePrefix');
+  const suffix = agoLabel(formatOptions, isPast ? 'pastSuffix' : 'futureSuffix');
+  return `${prefix}${magnitude}${suffix}`;
+}
+
+/**
+ * Truncates a string to maxLength characters, the last one replaced by an ellipsis.
+ * Mirrors Truncate-Text in statusline.ps1.
+ * @param {string} value
+ * @param {number|null} maxLength - null/0 leaves the value untouched
+ * @returns {string}
+ */
+function truncateText(value, maxLength) {
+  if (!maxLength || maxLength <= 0 || value.length <= maxLength) return value;
+  if (maxLength === 1) return '…';
+  return value.slice(0, maxLength - 1) + '…';
+}
+
+/**
+ * Reads a field's raw value and applies key-specific normalization.
+ * Mirrors Get-FieldRawValue in statusline.ps1.
+ * @param {object} data - sample or real payload
+ * @param {string} key  - dotted field key
+ * @returns {*} normalized value
+ */
+function getFieldRawValue(data, key) {
+  const value = getNestedValue(data, key);
+  if (key === 'workspace.added_dirs') return Array.isArray(value) ? value.length : (value == null ? 0 : 1);
+  // hit_ratio is a 0..1 ratio in the payload; shown as a percentage so it shares
+  // formatting and progress-bar thresholds with the other percentage fields.
+  if (key === 'prompt_cache.hit_ratio') {
+    return value == null ? value : Math.round(Number(value) * 1000) / 10;
+  }
+  return value;
+}
+
+/**
+ * Formats a raw value according to dataType/format/formatOptions — mirrors PS Format-FieldValue.
+ * @param {*}      value         - raw value from sample data
+ * @param {string} dataType      - 'string'|'currency'|'number'|'bool'|'duration_ms'|'unix_timestamp'
+ * @param {string|null} format   - type-specific format string
+ * @param {object|null} formatOptions - extra options (e.g. trueLabel/falseLabel for bool/custom)
+ * @returns {string}
+ */
+function formatFieldValue(value, dataType, format, formatOptions) {
+  switch (dataType) {
+    case 'currency': {
+      const n = parseFloat(value);
+      return isNaN(n) ? String(value) : n.toFixed(2);
+    }
+    case 'number': {
+      const n = parseFloat(value);
+      if (isNaN(n)) return String(value);
+      // k, m, b are deprecated — fall back to auto
+      const effectiveFormat = ['k', 'm', 'b'].includes(format) ? 'auto' : format;
+      if (effectiveFormat === 'auto') {
+        if (n >= 1_000_000_000) return Math.round(n / 1_000_000_000) + 'b';
+        if (n >= 1_000_000)     return Math.round(n / 1_000_000) + 'm';
+        if (n >= 1_000)         return Math.round(n / 1_000) + 'k';
+        return String(Math.round(n));
+      }
+      return String(Math.round(n)); // 'raw'
+    }
+    case 'bool': {
+      const b = value === true || value === 'true' || value === 1 || value === '1';
+      switch (format) {
+        case 'yes_no':    return b ? 'yes' : 'no';
+        case 'checkmark': return b ? '✓' : '✗';
+        case 'custom':    return b
+          ? (formatOptions?.trueLabel  || 'true')
+          : (formatOptions?.falseLabel || 'false');
+        default:          return b ? 'true' : 'false'; // true_false
+      }
+    }
+    case 'unix_timestamp': {
+      if (value === null || value === undefined) return '';
+      if (format === 'ago') return formatAgo(Number(value), formatOptions);
+      if (['local_time', 'local_datetime', 'local_short', 'custom'].includes(format)) {
+        const date = new Date(Number(value) * 1000);
+        const patternMap = {
+          local_time:     'HH:mm',
+          local_datetime: 'dd.MM.yyyy HH:mm',
+          local_short:    'dd.MM. HH:mm',
+        };
+        const pattern = patternMap[format] ?? (formatOptions?.customPattern || '');
+        return pattern ? formatDotNetPattern(date, pattern) : String(value);
+      }
+      const now        = Math.floor(Date.now() / 1000);
+      const diff       = Math.max(0, Number(value) - now);
+      const totalHours = Math.floor(diff / 3600);
+      const days       = Math.floor(diff / 86400);
+      const remHours   = Math.floor((diff % 86400) / 3600);
+      const minutes    = Math.floor((diff % 3600) / 60);
+      switch (format) {
+        case 'raw':            return String(value);
+        case 'hours':          return `${totalHours}h ${minutes}m`;
+        case 'long':           return days > 0
+          ? `${days}d ${remHours}hr ${minutes}min`
+          : `${totalHours}hr ${minutes}min`;
+        case 'days_hours':     return days > 0
+          ? `${days}d ${remHours}h`
+          : `${totalHours}h`;
+        case 'days_hours_pad': return `${days}d ${remHours}h`;
+        default: /* 'short' */ return days > 0
+          ? `${days}d ${remHours}h ${minutes}m`
+          : `${totalHours}h ${minutes}m`;
+      }
+    }
+    case 'duration_ms': {
+      // Value is in milliseconds (e.g. cost.total_duration_ms) — convert to seconds first
+      const secs = Math.max(0, Math.floor(Number(value) / 1000));
+      const d = Math.floor(secs / 86400);
+      const h = Math.floor((secs % 86400) / 3600);
+      const m = Math.floor((secs % 3600) / 60);
+      if (format === 'hours') return `${h}h ${m}m`;
+      if (format === 'long')  return d > 0 ? `${d}d ${h}hr ${m}min` : `${h}hr ${m}min`;
+      // 'short' — omit leading zero units
+      if (d > 0) return `${d}d ${h}h ${m}m`;
+      if (h > 0) return `${h}h ${m}m`;
+      return `${m}m`;
+    }
+    default: // 'string' and unknown types
+      return String(value);
+  }
+}
+
+/**
+ * Formats a field's value for display in the preview (returns HTML string with inline styles).
+ * @param {object} field - field config object from state
+ * @param {object} data  - sample data object
+ * @param {object|null} previewTheme - optional theme object; its fieldFg/fieldBg are used as
+ *   fallback colors when the field has no active fgOverride/bgOverride flag set
+ * @param {number|null} previewOverride - when non-null and field.type === 'progressbar',
+ *   used as the raw value instead of reading from data. Used by the edit dialog preview.
+ */
+function renderFieldHtml(field, data, previewTheme = null, previewOverride = null) {
+  const fgIsOverride = field.fgOverride ?? (field.fg !== null && field.fg !== undefined);
+  const bgIsOverride = field.bgOverride ?? (field.bg !== null && field.bg !== undefined);
+  const fg = fgIsOverride ? field.fg : (previewTheme?.fieldFg ?? null);
+  const bg = bgIsOverride ? field.bg : (previewTheme?.fieldBg ?? null);
+  const style = [fg ? `color:${fg};` : '', bg ? `background:${bg};` : ''].join('');
+
+  if (field.type === 'static') {
+    return `<span style="${style}">${escapeHtml(field.text || '')}</span>`;
+  }
+
+  if (field.type === 'new_fields_indicator') {
+    return `<span style="${style}">● Neue Felder (Indikator)</span>`;
+  }
+
+  if (field.type === 'effort') {
+    const symbolMap = { low: '○', medium: '◐', high: '●', xhigh: '⬤', max: '◉' };
+    const shortMap  = { low: 'L', medium: 'M', high: 'H', xhigh: 'XH', max: 'X' };
+    const rawVal    = getNestedValue(data, 'effort.level') || 'medium';
+    const sym       = symbolMap[rawVal] ?? rawVal[0];
+    const sh        = shortMap[rawVal]  ?? rawVal.toUpperCase();
+    const rendered  = { raw: rawVal, short: sh, symbol: sym, 'icon+raw': `${sym} ${rawVal}`, 'icon+short': `${sym} ${sh}` }[field.format] ?? rawVal;
+    return `<span style="${style}">${escapeHtml(rendered)}</span>`;
+  }
+
+  if (field.type === 'effort_level') {
+    // Deprecated — old configs render a placeholder label
+    return `<span style="${style};opacity:0.5;">[effort_level deprecated]</span>`;
+  }
+
+  if (field.type === 'thinking_enabled') {
+    const enabled = getNestedValue(data, 'thinking.enabled');
+    if (enabled === undefined || enabled === null) return '';
+    const opts       = field.formatOptions || {};
+    const trueSym    = opts.trueSymbol  || '💭';
+    const falseSym   = opts.falseSymbol || '○';
+    const sym        = enabled ? trueSym : falseSym;
+    const sh         = enabled ? 'T' : '-';
+    const rawStr     = enabled ? 'true' : 'false';
+    const rendered   = { raw: rawStr, short: sh, symbol: sym, 'icon+raw': `${sym} ${rawStr}`, 'icon+short': `${sym} ${sh}` }[field.format] ?? rawStr;
+    return `<span style="${style}">${escapeHtml(rendered)}</span>`;
+  }
+
+  // Use previewOverride as raw value for progressbar when set (e.g. from edit dialog preview)
+  const raw = (field.type === 'progressbar' && previewOverride !== null)
+    ? previewOverride
+    : getFieldRawValue(data, field.key);
+  if (raw === undefined || raw === null || raw === '') {
+    return '';
+  }
+
+  if (field.type === 'progressbar') {
+    if (field.progressStyle === 'raw') {
+      return `<span style="${style}">${escapeHtml(String(raw))}</span>`;
+    }
+    const brackets = field.barBrackets !== false; // default true
+    const charset  = field.barCharset || 'block';
+    // Use only the field's explicit fg as color override — theme fieldFg must not suppress threshold colors
+    const barFgOverride = fgIsOverride ? (field.fg ?? null) : null;
+    const { bar, color } = makeProgressBar(raw, field.progressStyle || 'color-coded', barFgOverride, brackets, charset, previewTheme?.progressThresholds || null);
+    const colorStyle = color ? `color:${color};` : '';
+    const finalStyle = [colorStyle, bg ? `background:${bg};` : ''].join('');
+    return `<span style="${finalStyle}">${bar}</span>`;
+  }
+
+  // type === 'field' — apply dataType formatting if configured
+  let displayValue = field.dataType
+    ? formatFieldValue(raw, field.dataType, field.format, field.formatOptions)
+    : String(raw);
+  // Path fields shorten by segment count, every other field by character count —
+  // one tool per field kind, never both on the same field.
+  if (PATH_KEYS.has(field.key)) {
+    if (field.pathDepth) displayValue = truncatePath(displayValue, field.pathDepth);
+  } else if (field.maxLength) {
+    displayValue = truncateText(displayValue, Number(field.maxLength));
+  }
+  return `<span style="${style}">${escapeHtml(displayValue)}</span>`;
+}
+
+function getNestedValue(obj, path) {
+  if (!path || !obj) return undefined;
+  return path.split('.').reduce((cur, key) => (cur != null ? cur[key] : undefined), obj);
+}
+
+function escapeHtml(str) {
+  return str
+    .replace(/&/g,  '&amp;')
+    .replace(/</g,  '&lt;')
+    .replace(/>/g,  '&gt;')
+    .replace(/"/g,  '&quot;')
+    .replace(/'/g,  '&#39;');
+}
+
+/**
+ * Truncates a path string to the last N segments, prefixed with "..." if segments
+ * were removed. Returns the original value unchanged if depth is null/0 or the path
+ * has fewer segments than depth.
+ * @param {string} value - path string (may use / or \ as separator)
+ * @param {number|null} depth - number of trailing segments to keep
+ * @returns {string}
+ */
+function truncatePath(value, depth) {
+  if (!depth || depth <= 0) return value;
+  const sep   = value.includes('\\') ? '\\' : '/';
+  const parts = value.split(/[/\\]/).filter(p => p !== '');
+  if (parts.length <= depth) return value;
+  return '...' + sep + parts.slice(parts.length - depth).join(sep);
+}
+// @conformance-end
+
 // ─── Constants ────────────────────────────────────────────────────────────
 
 const AVAILABLE_FIELDS = [
@@ -485,16 +890,6 @@ const PERCENTAGE_KEYS = new Set([
   'prompt_cache.hit_ratio',
 ]);
 
-// Fields that contain file-system paths (offer pathDepth option)
-const PATH_KEYS = new Set([
-  'cwd',
-  'transcript_path',
-  'workspace.current_dir',
-  'workspace.project_dir',
-  'worktree.path',
-  'worktree.original_cwd',
-  'scratchpad_dir',
-]);
 
 // Default data type for each known field key.
 // When a field is dragged from the palette, this mapping is applied automatically.
@@ -1809,7 +2204,7 @@ function renderLineGroup(lines) {
           : (f.previewValue ?? null);
         const fieldThemeId  = f.themeId ?? (_themePreviewId ?? state.activeTheme);
         const fieldThemeObj = fieldThemeId ? state.themes.find(t => t.id === fieldThemeId) ?? null : null;
-        return renderFieldHtml(f, SAMPLE_DATA, fieldThemeObj, previewOverride);
+        return renderFieldHtml(withDialogSymbolOverrides(f), SAMPLE_DATA, fieldThemeObj, previewOverride);
       }).join('')
     );
   });
@@ -1893,7 +2288,7 @@ function buildPowerlineSegment(fields, defaultBg) {
     const previewOverride = (_editDraft && _editDraft.id === f.id)
       ? (_editDraft.previewValue ?? f.previewValue ?? null)
       : (f.previewValue ?? null);
-    return renderFieldHtml(proxy, SAMPLE_DATA, fieldThemeObj, previewOverride);
+    return renderFieldHtml(withDialogSymbolOverrides(proxy), SAMPLE_DATA, fieldThemeObj, previewOverride);
   }).join('');
   return { bg: segBg, html: bodyHtml };
 }
@@ -1980,7 +2375,7 @@ function renderPreview() {
           : (f.previewValue ?? null);
         const fieldThemeId  = f.themeId ?? (_themePreviewId ?? state.activeTheme);
         const fieldThemeObj = fieldThemeId ? state.themes.find(t => t.id === fieldThemeId) ?? null : null;
-        return renderFieldHtml(f, SAMPLE_DATA, fieldThemeObj, previewOverride);
+        return renderFieldHtml(withDialogSymbolOverrides(f), SAMPLE_DATA, fieldThemeObj, previewOverride);
       }).join('');
     });
   } else {
@@ -3165,6 +3560,28 @@ function saveEditDialog() {
 }
 
 /**
+ * Mirrors the edit dialog's live thinking-symbol inputs onto a field before preview
+ * rendering. renderFieldHtml only reads formatOptions (it must stay DOM-free for the
+ * conformance harness), so the dialog values are injected at the call site instead.
+ * @param {object} field - field config object
+ * @returns {object} the field itself, or a shallow copy with overridden symbols
+ */
+function withDialogSymbolOverrides(field) {
+  if (!field || field.type !== 'thinking_enabled') return field;
+  const trueSym  = document.getElementById('edit-think-true-sym')?.value.trim()  || '';
+  const falseSym = document.getElementById('edit-think-false-sym')?.value.trim() || '';
+  if (!trueSym && !falseSym) return field;
+  return {
+    ...field,
+    formatOptions: {
+      ...(field.formatOptions || {}),
+      ...(trueSym  ? { trueSymbol:  trueSym  } : {}),
+      ...(falseSym ? { falseSymbol: falseSym } : {}),
+    },
+  };
+}
+
+/**
  * Renders the edit draft field as a progressbar HTML snippet using the given
  * preview value. Used by the dialog's inline preview. Returns an empty string
  * if no draft is active.
@@ -3175,7 +3592,7 @@ function renderProgressbarPreview(value) {
   if (!_editDraft) return '';
   const fieldThemeId   = _editDraft.themeId ?? (_themePreviewId ?? state.activeTheme);
   const activeThemeObj = fieldThemeId ? state.themes.find(t => t.id === fieldThemeId) ?? null : null;
-  return renderFieldHtml(_editDraft, SAMPLE_DATA, activeThemeObj, value);
+  return renderFieldHtml(withDialogSymbolOverrides(_editDraft), SAMPLE_DATA, activeThemeObj, value);
 }
 
 /**
@@ -3328,123 +3745,6 @@ document.addEventListener('keydown', e => {
   }
 });
 
-// ─── Progress bar rendering ───────────────────────────────────────────────
-
-// Color thresholds (global, matches PowerShell script)
-const PB_COLORS = { low: '#4ade80', mid: '#facc15', high: '#f87171' };
-
-// Character sets for filled/empty segments — mirrors PS charMap in Format-ProgressBar
-const PB_CHARSETS = {
-  block:  ['▓', '░'],
-  solid:  ['█', '░'],
-  circle: ['●', '○'],
-  square: ['■', '□'],
-  ascii:  ['#', '-'],
-  pipe:   ['▮', '▯'],
-};
-
-/**
- * Returns { bar: string, color: string } for a progress bar.
- * @param {number}      value   - 0 to 100
- * @param {string}      style   - 'normal' | 'color-coded'
- * @param {string|null} fg      - override color (#rrggbb) or null
- * @param {boolean}     brackets - whether to wrap the bar in [ ]
- * @param {string}      charset  - key from PB_CHARSETS, or 'braille' (handled separately)
- */
-function makeProgressBar(value, style, fg, brackets = true, charset = 'block', thresholds = null) {
-  const pct    = Math.min(100, Math.max(0, value || 0));
-  const filled = Math.round(pct / 10);
-  const empty  = 10 - filled;
-
-  const activeThresholds = thresholds || [
-    { upTo: 50,  fg: PB_COLORS.low  },
-    { upTo: 80,  fg: PB_COLORS.mid  },
-    { upTo: 100, fg: PB_COLORS.high },
-  ];
-  const matched        = activeThresholds.find(t => pct < t.upTo);
-  const thresholdColor = matched ? matched.fg : activeThresholds[activeThresholds.length - 1].fg;
-  const color = fg ?? (style === 'color-coded' ? thresholdColor : null);
-
-  // Braille charset — special edge characters at positions 0 and 9 (brackets ignored)
-  if (charset === 'braille') {
-    let inner = '';
-    for (let i = 0; i < 10; i++) {
-      if      (i === 9)      inner += '\u28F9';  // ⣹ right edge always
-      else if (i < filled)   inner += '\u28FF';  // ⣿ filled
-      else if (i === 0)      inner += '\u28CF';  // ⣏ left edge when empty
-      else                   inner += '\u28C9';  // ⣉ empty
-    }
-    const bar = `${inner} ${Math.round(pct)}%`;
-    return { bar, color };
-  }
-
-  const [fillCh, emptyCh] = PB_CHARSETS[charset] || PB_CHARSETS.block;
-
-  const inner = fillCh.repeat(filled) + emptyCh.repeat(empty);
-  const bar   = brackets ? `[${inner}] ${Math.round(pct)}%` : `${inner} ${Math.round(pct)}%`;
-
-  return { bar, color };
-}
-
-/**
- * Formats a JS Date using a subset of .NET custom DateTime format tokens.
- * Supported tokens: yyyy, yy, MM, M, dd, d, HH, H, mm, m, ss, s
- * Literal text can be escaped with single quotes: 'T' → T
- * Non-token, non-alpha characters pass through as-is.
- * @param {Date}   date    - JS Date object (local timezone)
- * @param {string} pattern - .NET-style format pattern
- * @returns {string}
- */
-function formatDotNetPattern(date, pattern) {
-  if (!pattern) return '';
-  const pad2 = n => String(n).padStart(2, '0');
-  const yr   = date.getFullYear();
-  const mo   = date.getMonth() + 1;
-  const dy   = date.getDate();
-  const hr   = date.getHours();
-  const mn   = date.getMinutes();
-  const sc   = date.getSeconds();
-  // MMMM/MMM use the browser locale so month names appear in the user's language
-  const tokens = {
-    yyyy: String(yr),
-    yy:   String(yr).slice(-2),
-    MMMM: date.toLocaleString(undefined, { month: 'long' }),
-    MMM:  date.toLocaleString(undefined, { month: 'short' }),
-    MM:   pad2(mo),
-    M:    String(mo),
-    dd:   pad2(dy),
-    d:    String(dy),
-    HH:   pad2(hr),
-    H:    String(hr),
-    mm:   pad2(mn),
-    m:    String(mn),
-    ss:   pad2(sc),
-    s:    String(sc),
-  };
-  // Regex matches quoted literals first, then longest-token-first to avoid MMMM/MMM/MM/M collisions
-  return pattern.replace(/'[^']*'|yyyy|yy|MMMM|MMM|MM|M|dd|d|HH|H|mm|m|ss|s/g, match => {
-    if (match.startsWith("'")) return match.slice(1, -1); // strip surrounding quotes
-    return tokens[match] ?? match;
-  });
-}
-
-/**
- * Formats a raw value according to dataType/format/formatOptions — mirrors PS Format-FieldValue.
- * @param {*}      value         - raw value from sample data
- * @param {string} dataType      - 'string'|'currency'|'number'|'bool'|'duration_ms'|'unix_timestamp'
- * @param {string|null} format   - type-specific format string
- * @param {object|null} formatOptions - extra options (e.g. trueLabel/falseLabel for bool/custom)
- * @returns {string}
- */
-// Default labels for the 'ago' timestamp format; overridable per field via formatOptions.
-const AGO_DEFAULTS = {
-  pastPrefix:   'vor ',
-  pastSuffix:   '',
-  futurePrefix: 'in ',
-  futureSuffix: '',
-  nowLabel:     'gerade eben',
-};
-
 // Edit-dialog rows for the 'ago' labels: [formatOptions key, label, placeholder]
 const AGO_LABEL_FIELDS = [
   ['pastPrefix',   'Präfix Vergangenheit', 'vor '],
@@ -3454,274 +3754,6 @@ const AGO_LABEL_FIELDS = [
   ['nowLabel',     'Unter 60 Sekunden',    'gerade eben'],
 ];
 
-// Below this absolute delta 'ago' renders nowLabel — the duration formatter has
-// minute resolution, so anything shorter would read "vor 0h 0m" and look like a bug.
-const AGO_NOW_THRESHOLD_SECONDS = 60;
-
-/**
- * Reads an 'ago' label from formatOptions, honoring deliberately empty strings.
- * @param {object|null} formatOptions
- * @param {string} name - key in AGO_DEFAULTS
- * @returns {string}
- */
-function agoLabel(formatOptions, name) {
-  const v = formatOptions?.[name];
-  return (v === undefined || v === null) ? AGO_DEFAULTS[name] : String(v);
-}
-
-/**
- * Renders a unix timestamp as elapsed/upcoming duration. Mirrors Format-Ago in statusline.ps1.
- * @param {number} unixSeconds
- * @param {object|null} formatOptions - pastPrefix/pastSuffix/futurePrefix/futureSuffix/nowLabel
- * @returns {string}
- */
-function formatAgo(unixSeconds, formatOptions) {
-  const delta = unixSeconds - Math.floor(Date.now() / 1000);
-  if (Math.abs(delta) < AGO_NOW_THRESHOLD_SECONDS) return agoLabel(formatOptions, 'nowLabel');
-
-  const abs     = Math.abs(delta);
-  const days    = Math.floor(abs / 86400);
-  const hours   = Math.floor(abs / 3600);
-  const remH    = Math.floor((abs % 86400) / 3600);
-  const minutes = Math.floor((abs % 3600) / 60);
-  const magnitude = days > 0 ? `${days}d ${remH}h ${minutes}m` : `${hours}h ${minutes}m`;
-
-  const isPast = delta < 0;
-  const prefix = agoLabel(formatOptions, isPast ? 'pastPrefix' : 'futurePrefix');
-  const suffix = agoLabel(formatOptions, isPast ? 'pastSuffix' : 'futureSuffix');
-  return `${prefix}${magnitude}${suffix}`;
-}
-
-/**
- * Truncates a string to maxLength characters, the last one replaced by an ellipsis.
- * Mirrors Truncate-Text in statusline.ps1.
- * @param {string} value
- * @param {number|null} maxLength - null/0 leaves the value untouched
- * @returns {string}
- */
-function truncateText(value, maxLength) {
-  if (!maxLength || maxLength <= 0 || value.length <= maxLength) return value;
-  if (maxLength === 1) return '…';
-  return value.slice(0, maxLength - 1) + '…';
-}
-
-/**
- * Reads a field's raw value and applies key-specific normalization.
- * Mirrors Get-FieldRawValue in statusline.ps1.
- * @param {object} data - sample or real payload
- * @param {string} key  - dotted field key
- * @returns {*} normalized value
- */
-function getFieldRawValue(data, key) {
-  const value = getNestedValue(data, key);
-  if (key === 'workspace.added_dirs') return Array.isArray(value) ? value.length : (value == null ? 0 : 1);
-  // hit_ratio is a 0..1 ratio in the payload; shown as a percentage so it shares
-  // formatting and progress-bar thresholds with the other percentage fields.
-  if (key === 'prompt_cache.hit_ratio') {
-    return value == null ? value : Math.round(Number(value) * 1000) / 10;
-  }
-  return value;
-}
-
-function formatFieldValue(value, dataType, format, formatOptions) {
-  switch (dataType) {
-    case 'currency': {
-      const n = parseFloat(value);
-      return isNaN(n) ? String(value) : n.toFixed(2);
-    }
-    case 'number': {
-      const n = parseFloat(value);
-      if (isNaN(n)) return String(value);
-      // k, m, b are deprecated — fall back to auto
-      const effectiveFormat = ['k', 'm', 'b'].includes(format) ? 'auto' : format;
-      if (effectiveFormat === 'auto') {
-        if (n >= 1_000_000_000) return Math.round(n / 1_000_000_000) + 'b';
-        if (n >= 1_000_000)     return Math.round(n / 1_000_000) + 'm';
-        if (n >= 1_000)         return Math.round(n / 1_000) + 'k';
-        return String(Math.round(n));
-      }
-      return String(Math.round(n)); // 'raw'
-    }
-    case 'bool': {
-      const b = value === true || value === 'true' || value === 1 || value === '1';
-      switch (format) {
-        case 'yes_no':    return b ? 'yes' : 'no';
-        case 'checkmark': return b ? '✓' : '✗';
-        case 'custom':    return b
-          ? (formatOptions?.trueLabel  || 'true')
-          : (formatOptions?.falseLabel || 'false');
-        default:          return b ? 'true' : 'false'; // true_false
-      }
-    }
-    case 'unix_timestamp': {
-      if (value === null || value === undefined) return '';
-      if (format === 'ago') return formatAgo(Number(value), formatOptions);
-      if (['local_time', 'local_datetime', 'local_short', 'custom'].includes(format)) {
-        const date = new Date(Number(value) * 1000);
-        const patternMap = {
-          local_time:     'HH:mm',
-          local_datetime: 'dd.MM.yyyy HH:mm',
-          local_short:    'dd.MM. HH:mm',
-        };
-        const pattern = patternMap[format] ?? (formatOptions?.customPattern || '');
-        return pattern ? formatDotNetPattern(date, pattern) : String(value);
-      }
-      const now        = Math.floor(Date.now() / 1000);
-      const diff       = Math.max(0, Number(value) - now);
-      const totalHours = Math.floor(diff / 3600);
-      const days       = Math.floor(diff / 86400);
-      const remHours   = Math.floor((diff % 86400) / 3600);
-      const minutes    = Math.floor((diff % 3600) / 60);
-      switch (format) {
-        case 'raw':            return String(value);
-        case 'hours':          return `${totalHours}h ${minutes}m`;
-        case 'long':           return days > 0
-          ? `${days}d ${remHours}hr ${minutes}min`
-          : `${totalHours}hr ${minutes}min`;
-        case 'days_hours':     return days > 0
-          ? `${days}d ${remHours}h`
-          : `${totalHours}h`;
-        case 'days_hours_pad': return `${days}d ${remHours}h`;
-        default: /* 'short' */ return days > 0
-          ? `${days}d ${remHours}h ${minutes}m`
-          : `${totalHours}h ${minutes}m`;
-      }
-    }
-    case 'duration_ms': {
-      // Value is in milliseconds (e.g. cost.total_duration_ms) — convert to seconds first
-      const secs = Math.max(0, Math.floor(Number(value) / 1000));
-      const d = Math.floor(secs / 86400);
-      const h = Math.floor((secs % 86400) / 3600);
-      const m = Math.floor((secs % 3600) / 60);
-      if (format === 'hours') return `${h}h ${m}m`;
-      if (format === 'long')  return d > 0 ? `${d}d ${h}hr ${m}min` : `${h}hr ${m}min`;
-      // 'short' — omit leading zero units
-      if (d > 0) return `${d}d ${h}h ${m}m`;
-      if (h > 0) return `${h}h ${m}m`;
-      return `${m}m`;
-    }
-    default: // 'string' and unknown types
-      return String(value);
-  }
-}
-
-/**
- * Formats a field's value for display in the preview (returns HTML string with inline styles).
- * @param {object} field - field config object from state
- * @param {object} data  - sample data object
- * @param {object|null} previewTheme - optional theme object; its fieldFg/fieldBg are used as
- *   fallback colors when the field has no active fgOverride/bgOverride flag set
- * @param {number|null} previewOverride - when non-null and field.type === 'progressbar',
- *   used as the raw value instead of reading from data. Used by the edit dialog preview.
- */
-function renderFieldHtml(field, data, previewTheme = null, previewOverride = null) {
-  const fgIsOverride = field.fgOverride ?? (field.fg !== null && field.fg !== undefined);
-  const bgIsOverride = field.bgOverride ?? (field.bg !== null && field.bg !== undefined);
-  const fg = fgIsOverride ? field.fg : (previewTheme?.fieldFg ?? null);
-  const bg = bgIsOverride ? field.bg : (previewTheme?.fieldBg ?? null);
-  const style = [fg ? `color:${fg};` : '', bg ? `background:${bg};` : ''].join('');
-
-  if (field.type === 'static') {
-    return `<span style="${style}">${escapeHtml(field.text || '')}</span>`;
-  }
-
-  if (field.type === 'new_fields_indicator') {
-    return `<span style="${style}">● Neue Felder (Indikator)</span>`;
-  }
-
-  if (field.type === 'effort') {
-    const symbolMap = { low: '○', medium: '◐', high: '●', xhigh: '⬤', max: '◉' };
-    const shortMap  = { low: 'L', medium: 'M', high: 'H', xhigh: 'XH', max: 'X' };
-    const rawVal    = getNestedValue(data, 'effort.level') || 'medium';
-    const sym       = symbolMap[rawVal] ?? rawVal[0];
-    const sh        = shortMap[rawVal]  ?? rawVal.toUpperCase();
-    const rendered  = { raw: rawVal, short: sh, symbol: sym, 'icon+raw': `${sym} ${rawVal}`, 'icon+short': `${sym} ${sh}` }[field.format] ?? rawVal;
-    return `<span style="${style}">${escapeHtml(rendered)}</span>`;
-  }
-
-  if (field.type === 'effort_level') {
-    // Deprecated — old configs render a placeholder label
-    return `<span style="${style};opacity:0.5;">[effort_level deprecated]</span>`;
-  }
-
-  if (field.type === 'thinking_enabled') {
-    const enabled = getNestedValue(data, 'thinking.enabled');
-    if (enabled === undefined || enabled === null) return '';
-    const opts       = field.formatOptions || {};
-    const trueSym    = (document.getElementById('edit-think-true-sym')?.value.trim())  || opts.trueSymbol  || '💭';
-    const falseSym   = (document.getElementById('edit-think-false-sym')?.value.trim()) || opts.falseSymbol || '○';
-    const sym        = enabled ? trueSym : falseSym;
-    const sh         = enabled ? 'T' : '-';
-    const rawStr     = enabled ? 'true' : 'false';
-    const rendered   = { raw: rawStr, short: sh, symbol: sym, 'icon+raw': `${sym} ${rawStr}`, 'icon+short': `${sym} ${sh}` }[field.format] ?? rawStr;
-    return `<span style="${style}">${escapeHtml(rendered)}</span>`;
-  }
-
-  // Use previewOverride as raw value for progressbar when set (e.g. from edit dialog preview)
-  const raw = (field.type === 'progressbar' && previewOverride !== null)
-    ? previewOverride
-    : getFieldRawValue(data, field.key);
-  if (raw === undefined || raw === null || raw === '') {
-    return '';
-  }
-
-  if (field.type === 'progressbar') {
-    if (field.progressStyle === 'raw') {
-      return `<span style="${style}">${escapeHtml(String(raw))}</span>`;
-    }
-    const brackets = field.barBrackets !== false; // default true
-    const charset  = field.barCharset || 'block';
-    // Use only the field's explicit fg as color override — theme fieldFg must not suppress threshold colors
-    const barFgOverride = fgIsOverride ? (field.fg ?? null) : null;
-    const { bar, color } = makeProgressBar(raw, field.progressStyle || 'color-coded', barFgOverride, brackets, charset, previewTheme?.progressThresholds || null);
-    const colorStyle = color ? `color:${color};` : '';
-    const finalStyle = [colorStyle, bg ? `background:${bg};` : ''].join('');
-    return `<span style="${finalStyle}">${bar}</span>`;
-  }
-
-  // type === 'field' — apply dataType formatting if configured
-  let displayValue = field.dataType
-    ? formatFieldValue(raw, field.dataType, field.format, field.formatOptions)
-    : String(raw);
-  // Path fields shorten by segment count, every other field by character count —
-  // one tool per field kind, never both on the same field.
-  if (PATH_KEYS.has(field.key)) {
-    if (field.pathDepth) displayValue = truncatePath(displayValue, field.pathDepth);
-  } else if (field.maxLength) {
-    displayValue = truncateText(displayValue, Number(field.maxLength));
-  }
-  return `<span style="${style}">${escapeHtml(displayValue)}</span>`;
-}
-
-function getNestedValue(obj, path) {
-  if (!path || !obj) return undefined;
-  return path.split('.').reduce((cur, key) => (cur != null ? cur[key] : undefined), obj);
-}
-
-function escapeHtml(str) {
-  return str
-    .replace(/&/g,  '&amp;')
-    .replace(/</g,  '&lt;')
-    .replace(/>/g,  '&gt;')
-    .replace(/"/g,  '&quot;')
-    .replace(/'/g,  '&#39;');
-}
-
-/**
- * Truncates a path string to the last N segments, prefixed with "..." if segments
- * were removed. Returns the original value unchanged if depth is null/0 or the path
- * has fewer segments than depth.
- * @param {string} value - path string (may use / or \ as separator)
- * @param {number|null} depth - number of trailing segments to keep
- * @returns {string}
- */
-function truncatePath(value, depth) {
-  if (!depth || depth <= 0) return value;
-  const sep   = value.includes('\\') ? '\\' : '/';
-  const parts = value.split(/[/\\]/).filter(p => p !== '');
-  if (parts.length <= depth) return value;
-  return '...' + sep + parts.slice(parts.length - depth).join(sep);
-}
   </script>
 </body>
 </html>
