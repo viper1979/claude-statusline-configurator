@@ -592,6 +592,21 @@ function getFieldRawValue(data, key) {
 }
 
 /**
+ * Rounds to the nearest integer with ties going to the even neighbour, the way
+ * [math]::Round and the [int] cast behave in PowerShell (2.5 -> 2, 3.5 -> 4).
+ * Math.round would round 2.5 up and make the preview drift from the status line.
+ * @param {number} n
+ * @returns {number}
+ */
+function roundHalfToEven(n) {
+  const floor = Math.floor(n);
+  const diff  = n - floor;
+  if (diff < 0.5) return floor;
+  if (diff > 0.5) return floor + 1;
+  return floor % 2 === 0 ? floor : floor + 1;
+}
+
+/**
  * Formats a raw value according to dataType/format/formatOptions — mirrors PS Format-FieldValue.
  * @param {*}      value         - raw value from sample data
  * @param {string} dataType      - 'string'|'currency'|'number'|'bool'|'duration_ms'|'unix_timestamp'
@@ -613,10 +628,10 @@ function formatFieldValue(value, dataType, format, formatOptions, nowSeconds = n
       const effectiveFormat = ['k', 'm', 'b'].includes(format) ? 'auto' : format;
       if (effectiveFormat === 'auto') {
         // Upper-case suffixes, matching Format-FieldValue in statusline.ps1
-        if (n >= 1_000_000_000) return Math.round(n / 1_000_000_000) + 'B';
-        if (n >= 1_000_000)     return Math.round(n / 1_000_000) + 'M';
-        if (n >= 1_000)         return Math.round(n / 1_000) + 'K';
-        return String(Math.round(n));
+        if (n >= 1_000_000_000) return roundHalfToEven(n / 1_000_000_000) + 'B';
+        if (n >= 1_000_000)     return roundHalfToEven(n / 1_000_000) + 'M';
+        if (n >= 1_000)         return roundHalfToEven(n / 1_000) + 'K';
+        return String(roundHalfToEven(n));
       }
       return String(Math.round(n)); // 'raw'
     }
