@@ -633,7 +633,7 @@ function formatFieldValue(value, dataType, format, formatOptions, nowSeconds = n
         if (n >= 1_000)         return roundHalfToEven(n / 1_000) + 'K';
         return String(roundHalfToEven(n));
       }
-      return String(Math.round(n)); // 'raw'
+      return String(value); // 'raw' and unset: the status line shows the value as-is, unrounded
     }
     case 'bool': {
       const b = value === true || value === 'true' || value === 1 || value === '1';
