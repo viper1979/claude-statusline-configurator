@@ -671,8 +671,9 @@ function Get-FieldRawValue {
 
     switch ($Key) {
         'workspace.added_dirs' {
-            # An empty array is unboxed to $null by the pipeline, so @() is applied
-            # unconditionally to correctly yield 0 instead of an empty result.
+            # A missing key must count as 0. @($null).Count would be 1, so guard first;
+            # the @() wrapper then keeps an empty array (unboxed by the pipeline) at 0.
+            if ($null -eq $value) { return 0 }
             return @($value).Count
         }
         'prompt_cache.hit_ratio' {

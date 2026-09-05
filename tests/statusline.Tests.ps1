@@ -2588,6 +2588,17 @@ Describe 'Get-FieldRawValue' {
         Get-FieldRawValue $data 'prompt_cache.hit_ratio' | Should -BeNullOrEmpty
     }
 
+    It 'returns 0 for workspace.added_dirs when the key is missing' {
+        # Arrange
+        $data = [PSCustomObject]@{ workspace = [PSCustomObject]@{} }
+
+        # Act
+        $count = Get-FieldRawValue $data 'workspace.added_dirs'
+
+        # Assert
+        $count | Should -Be 0
+    }
+
     It 'returns the element count for workspace.added_dirs' {
         # Arrange
         $data = [PSCustomObject]@{ workspace = [PSCustomObject]@{ added_dirs = @('/a', '/b') } }
