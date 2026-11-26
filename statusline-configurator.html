@@ -1014,11 +1014,12 @@ const FIELD_TYPE_DEFAULTS = {
   'worktree.name':                           { dataType: 'string' },
   'worktree.branch':                         { dataType: 'string' },
   'worktree.original_branch':                { dataType: 'string' },
-  // Pull Request
-  'pr.number':                               { dataType: 'number',         format: 'raw' },
-  'pr.url':                                  { dataType: 'string' },
-  'pr.review_state':                         { dataType: 'string' },
-  'pr.kind':                                 { dataType: 'string' },
+  // Pull Request — the whole pr object is absent while no PR/MR is open, so the fields
+  // default to hiding (placeholder '') instead of the dataType placeholder ('0' would read as "PR #0").
+  'pr.number':                               { dataType: 'number',         format: 'raw', placeholder: '' },
+  'pr.url':                                  { dataType: 'string',         placeholder: '' },
+  'pr.review_state':                         { dataType: 'string',         placeholder: '' },
+  'pr.kind':                                 { dataType: 'string',         placeholder: '' },
 };
 
 // Sample data shown in preview
