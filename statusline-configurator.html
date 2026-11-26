@@ -903,7 +903,10 @@ const AVAILABLE_FIELDS = [
     { key: 'workspace.project_dir',  label: 'Project Dir' },
     { key: 'workspace.added_dirs',   label: 'Added Dirs Count' },
     { key: 'workspace.git_worktree', label: 'Git Worktree' },
-    { key: 'cwd',                    label: 'CWD' },
+    { key: 'workspace.repo.host',    label: 'Repo Host' },
+    { key: 'workspace.repo.owner',   label: 'Repo Owner' },
+    { key: 'workspace.repo.name',    label: 'Repo Name' },
+    { key: 'cwd',                   label: 'CWD' },
     { key: 'transcript_path',        label: 'Transcript Path' },
     { key: 'scratchpad_dir',         label: 'Scratchpad Dir' },
   ]},
@@ -923,6 +926,13 @@ const AVAILABLE_FIELDS = [
     { key: 'worktree.branch',          label: 'Branch' },
     { key: 'worktree.original_cwd',    label: 'Original CWD' },
     { key: 'worktree.original_branch', label: 'Original Branch' },
+  ]},
+  // Present only while an open PR (GitHub) or MR (GitLab) exists for the current branch
+  { group: 'Pull Request', items: [
+    { key: 'pr.number',       label: 'PR Number' },
+    { key: 'pr.url',          label: 'PR URL' },
+    { key: 'pr.review_state', label: 'Review State' },
+    { key: 'pr.kind',         label: 'Kind (mr = GitLab)' },
   ]},
   { group: 'Session State', items: [
     { key: 'effort.level',     label: 'Effort Level',     specialType: 'effort' },
@@ -987,7 +997,10 @@ const FIELD_TYPE_DEFAULTS = {
   'workspace.project_dir':                   { dataType: 'string' },
   'workspace.added_dirs':                    { dataType: 'number',  format: 'raw' },
   'workspace.git_worktree':                  { dataType: 'string' },
-  'cwd':                                     { dataType: 'string' },
+  'workspace.repo.host':                     { dataType: 'string' },
+  'workspace.repo.owner':                    { dataType: 'string' },
+  'workspace.repo.name':                     { dataType: 'string' },
+  'cwd':                                    { dataType: 'string' },
   'scratchpad_dir':                          { dataType: 'string' },
   'prompt_id':                               { dataType: 'string' },
   'session_name':                            { dataType: 'string' },
@@ -1001,6 +1014,11 @@ const FIELD_TYPE_DEFAULTS = {
   'worktree.name':                           { dataType: 'string' },
   'worktree.branch':                         { dataType: 'string' },
   'worktree.original_branch':                { dataType: 'string' },
+  // Pull Request
+  'pr.number':                               { dataType: 'number',         format: 'raw' },
+  'pr.url':                                  { dataType: 'string' },
+  'pr.review_state':                         { dataType: 'string' },
+  'pr.kind':                                 { dataType: 'string' },
 };
 
 // Sample data shown in preview
@@ -1010,7 +1028,8 @@ const SAMPLE_DATA = {
   session_name: 'my-session',
   transcript_path: '/tmp/transcript.jsonl',
   model: { id: 'claude-opus-4-6', display_name: 'Opus' },
-  workspace: { current_dir: '/home/user/myproject', project_dir: '/home/user/myproject', added_dirs: ['/home/user/extra'], git_worktree: 'my-feature' },
+  workspace: { current_dir: '/home/user/myproject', project_dir: '/home/user/myproject', added_dirs: ['/home/user/extra'], git_worktree: 'my-feature',
+    repo: { host: 'github.com', owner: 'my-org', name: 'myproject' } },
   version: '1.0.80',
   output_style: { name: 'default' },
   cost: { total_cost_usd: 0.01234, total_duration_ms: 45000, total_api_duration_ms: 2300, total_lines_added: 156, total_lines_removed: 23 },
@@ -1041,6 +1060,8 @@ const SAMPLE_DATA = {
   vim: { mode: 'NORMAL' },
   agent: { name: '' },
   worktree: { name: 'my-feature', path: '/home/user/.claude/worktrees/my-feature', branch: 'worktree-my-feature', original_cwd: '/home/user/myproject', original_branch: 'main' },
+  // kind omitted on purpose: GitHub PRs carry no kind, only GitLab MRs send 'mr'
+  pr:        { number: 42, url: 'https://github.com/my-org/myproject/pull/42', review_state: 'pending' },
   effort:    { level: 'medium' },
   thinking:  { enabled: true },
   fast_mode: false,
