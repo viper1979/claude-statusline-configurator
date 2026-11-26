@@ -3007,6 +3007,73 @@ Describe 'Render Context is passed explicitly' {
     }
 }
 
+# Progress bar colors follow the same theme resolution as every other Field:
+# fgOverride > per-field theme > active theme. The configurator preview does the same.
+Describe 'Format-Field progressbar color resolution' {
+    BeforeAll {
+        # Active theme colors every bar blue, the alternative theme colors it green.
+        $script:pbConfig = [PSCustomObject]@{
+            activeTheme = 'act'
+            themes = @(
+                [PSCustomObject]@{ id = 'act';     progressThresholds = @([PSCustomObject]@{ upTo = 100; fg = '#0000ff' }) },
+                [PSCustomObject]@{ id = 'alt';     progressThresholds = @([PSCustomObject]@{ upTo = 100; fg = '#00ff00' }) },
+                [PSCustomObject]@{ id = 'colorsOnly'; fieldFg = '#eeeeee' }
+            )
+        }
+        $script:pbData = [PSCustomObject]@{ pct = 10 }
+    }
+
+    It 'uses the progressThresholds of the field theme instead of the active theme' {
+        # Arrange
+        $ctx   = New-RenderContext -Config $script:pbConfig
+        $field = [PSCustomObject]@{ type = 'progressbar'; key = 'pct'; themeId = 'alt' }
+
+        # Act
+        $result = Format-Field $field $script:pbData -Context $ctx
+
+        # Assert
+        $result | Should -Match '38;2;0;255;0m'
+        $result | Should -Not -Match '38;2;0;0;255m'
+    }
+
+    It 'uses the default thresholds when the field theme defines none, like the preview' {
+        # Arrange
+        $ctx   = New-RenderContext -Config $script:pbConfig
+        $field = [PSCustomObject]@{ type = 'progressbar'; key = 'pct'; themeId = 'colorsOnly' }
+
+        # Act
+        $result = Format-Field $field $script:pbData -Context $ctx
+
+        # Assert: 10 % falls into the first default threshold, #4ade80
+        $result | Should -Match '38;2;74;222;128m'
+    }
+
+    It 'ignores a stored fg when fgOverride is false' {
+        # Arrange
+        $ctx   = New-RenderContext -Config $script:pbConfig
+        $field = [PSCustomObject]@{ type = 'progressbar'; key = 'pct'; fg = '#ff00ff'; fgOverride = $false }
+
+        # Act
+        $result = Format-Field $field $script:pbData -Context $ctx
+
+        # Assert
+        $result | Should -Match '38;2;0;0;255m'
+        $result | Should -Not -Match '38;2;255;0;255m'
+    }
+
+    It 'uses the stored fg when fgOverride is true' {
+        # Arrange
+        $ctx   = New-RenderContext -Config $script:pbConfig
+        $field = [PSCustomObject]@{ type = 'progressbar'; key = 'pct'; fg = '#ff00ff'; fgOverride = $true; themeId = 'alt' }
+
+        # Act
+        $result = Format-Field $field $script:pbData -Context $ctx
+
+        # Assert
+        $result | Should -Match '38;2;255;0;255m'
+    }
+}
+
 Describe 'Assert-RenderContext' {
     It 'Format-Field throws a clear error when no Render Context is passed' {
         # Arrange
