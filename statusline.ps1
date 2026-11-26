@@ -264,7 +264,8 @@ function ConvertTo-AnsiBg {
 $script:AnsiReset      = "$([char]27)[0m"
 
 # Default progressbar threshold colors. New-RenderContext takes the active theme's
-# thresholds instead when the theme defines any; Format-ProgressBar falls back to these.
+# thresholds instead when the theme defines any, and Format-Field takes a per-field
+# theme's thresholds over both; Format-ProgressBar falls back to these.
 $script:PbThresholds = @(
     [PSCustomObject]@{ upTo = 50;  fg = '#4ade80' },
     [PSCustomObject]@{ upTo = 80;  fg = '#facc15' },
@@ -749,9 +750,14 @@ function Format-Field {
             if ($null -ne $Field.barBrackets) { $effectiveBrackets = [bool]$Field.barBrackets }
             if ($Field.barCharset)            { $effectiveCharset  = $Field.barCharset }
 
-            $bar = Format-ProgressBar -Value ([double]$value) -Style $effectiveStyle -Fg $Field.fg `
+            # Same chain as the other colors: an explicit fg replaces the threshold colors,
+            # the field theme's thresholds replace the active theme's. A field theme without
+            # thresholds yields $null, so Format-ProgressBar uses its defaults (as the preview does).
+            $barFg         = if ($fgIsOverride) { $Field.fg } else { $null }
+            $barThresholds = if ($fieldTheme) { $fieldTheme.progressThresholds } else { $ctx.PbThresholds }
+            $bar = Format-ProgressBar -Value ([double]$value) -Style $effectiveStyle -Fg $barFg `
                                        -Brackets $effectiveBrackets -Charset $effectiveCharset `
-                                       -Thresholds $ctx.PbThresholds
+                                       -Thresholds $barThresholds
             if ($Field.bg) { return "${bgAnsi}${bar}${script:AnsiReset}" }
             return $bar
         }
